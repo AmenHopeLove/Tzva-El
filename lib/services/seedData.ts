@@ -37,7 +37,47 @@ export const INITIAL_USERS: User[] = [
   }
 ];
 
-export const INITIAL_CHOIRS: Choir[] = [];
+export const INITIAL_CHOIRS: Choir[] = [
+  {
+    id: 'choir-1',
+    organizationId: 'org-001',
+    name: 'Sanctuary Worship Choir',
+    code: 'SWC',
+    description: 'Main Sunday morning sanctuary worship team & choir',
+    meetingDay: 'Thursday',
+    meetingTime: '19:00',
+    status: 'ACTIVE',
+    memberCount: 24,
+    adminName: 'Pastor David',
+    createdAt: '2026-01-01'
+  },
+  {
+    id: 'choir-2',
+    organizationId: 'org-001',
+    name: 'Youth & Young Adult Choir',
+    code: 'YYA',
+    description: 'Youth and collegiate contemporary praise choir',
+    meetingDay: 'Friday',
+    meetingTime: '18:30',
+    status: 'ACTIVE',
+    memberCount: 18,
+    adminName: 'Sarah Jenkins',
+    createdAt: '2026-01-15'
+  },
+  {
+    id: 'choir-3',
+    organizationId: 'org-001',
+    name: 'Gospel Praise Ensemble',
+    code: 'GPE',
+    description: 'Energetic gospel & contemporary celebration ensemble',
+    meetingDay: 'Tuesday',
+    meetingTime: '19:30',
+    status: 'ACTIVE',
+    memberCount: 16,
+    adminName: 'Marcus Cole',
+    createdAt: '2026-02-01'
+  }
+];
 
 export const INITIAL_CUSTOM_FIELDS: CustomFieldDefinition[] = [];
 

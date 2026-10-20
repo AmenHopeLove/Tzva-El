@@ -17,6 +17,19 @@ interface AuthContextType {
   availableChoirs: Choir[]; // Filtered list of choirs user is allowed to access
   allChoirs: Choir[];
   login: (usernameOrEmail: string, pass: string) => boolean;
+  signUp: (data: {
+    fullName: string;
+    email: string;
+    username?: string;
+    password: string;
+    phone?: string;
+    primaryChoirId?: string;
+    role?: SystemRole;
+  }) => { success: boolean; user?: User; error?: string };
+  verifyResetAccount: (usernameOrEmail: string) => { success: boolean; user?: User; error?: string };
+  resetPassword: (usernameOrEmail: string, newPassword: string) => { success: boolean; error?: string };
+  changePassword: (oldPassword: string, newPassword: string) => { success: boolean; error?: string };
+  updateProfile: (data: Partial<User>) => { success: boolean; user?: User; error?: string };
   logout: () => void;
   setRole: (role: SystemRole) => void;
   setActiveChoirId: (id: string) => void;
@@ -128,14 +141,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const choirsList = DataStore.getChoirs();
     setAllChoirs(choirsList);
 
-    // Auto-login default Super Admin session for immediate boot testing
-    const defaultSuperAdmin = DataStore.getUsers()[0];
-    if (defaultSuperAdmin) {
-      setCurrentUser(defaultSuperAdmin);
-      setIsAuthenticated(true);
-      setCurrentRole(defaultSuperAdmin.role);
-      setActiveChoirId('ALL');
+    // Session persistence check
+    if (typeof window !== 'undefined') {
+      const savedUserId = localStorage.getItem('worship_session_user_id');
+      if (savedUserId) {
+        const users = DataStore.getUsers();
+        const user = users.find((u) => u.id === savedUserId);
+        if (user) {
+          setCurrentUser(user);
+          setIsAuthenticated(true);
+          setCurrentRole(user.role);
+          setActiveChoirId(user.role === 'SUPER_ADMIN' ? 'ALL' : (user.primaryChoirId || user.assignedChoirIds[0] || 'choir-1'));
+          return;
+        }
+      }
     }
+    // Default to logged out state if no active session
+    setCurrentUser(null);
+    setIsAuthenticated(false);
   }, []);
 
   const refreshData = () => {
@@ -155,14 +178,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const assigned = user.primaryChoirId || user.assignedChoirIds[0] || 'choir-1';
         setActiveChoirId(assigned);
       }
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('worship_session_user_id', user.id);
+      }
       return true;
     }
     return false;
   };
 
+  const signUp = (data: {
+    fullName: string;
+    email: string;
+    username?: string;
+    password: string;
+    phone?: string;
+    primaryChoirId?: string;
+    role?: SystemRole;
+  }) => {
+    const res = DataStore.signUpUser(data);
+    if (res.success && res.user) {
+      setCurrentUser(res.user);
+      setIsAuthenticated(true);
+      setCurrentRole(res.user.role);
+      setActiveChoirId(res.user.primaryChoirId || 'choir-1');
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('worship_session_user_id', res.user.id);
+      }
+      refreshData();
+    }
+    return res;
+  };
+
+  const verifyResetAccount = (usernameOrEmail: string) => {
+    return DataStore.verifyResetAccount(usernameOrEmail);
+  };
+
+  const resetPassword = (usernameOrEmail: string, newPassword: string) => {
+    return DataStore.resetPassword(usernameOrEmail, newPassword);
+  };
+
+  const changePassword = (oldPassword: string, newPassword: string) => {
+    if (!currentUser) return { success: false, error: 'User is not authenticated.' };
+    return DataStore.changePassword(currentUser.id, oldPassword, newPassword);
+  };
+
+  const updateProfile = (data: Partial<User>) => {
+    if (!currentUser) return { success: false, error: 'User is not authenticated.' };
+    const res = DataStore.updateUserProfile(currentUser.id, data);
+    if (res.success && res.user) {
+      setCurrentUser(res.user);
+    }
+    return res;
+  };
+
   const logout = () => {
     setCurrentUser(null);
     setIsAuthenticated(false);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('worship_session_user_id');
+    }
   };
 
   const setRole = (role: SystemRole) => {
@@ -215,6 +289,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         availableChoirs,
         allChoirs,
         login,
+        signUp,
+        verifyResetAccount,
+        resetPassword,
+        changePassword,
+        updateProfile,
         logout,
         setRole,
         setActiveChoirId,

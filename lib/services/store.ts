@@ -19,6 +19,7 @@ import {
   AuditLog,
   Organization,
   User,
+  SystemRole,
   AppNotification
 } from '../types';
 
@@ -112,6 +113,124 @@ export const DataStore = {
     return found || null;
   },
 
+  signUpUser(data: {
+    fullName: string;
+    email: string;
+    username?: string;
+    password: string;
+    phone?: string;
+    primaryChoirId?: string;
+    role?: SystemRole;
+  }): { success: boolean; user?: User; error?: string } {
+    const users = this.getUsers();
+    const trimmedEmail = data.email.trim().toLowerCase();
+    const trimmedUsername = (data.username || trimmedEmail.split('@')[0]).trim().toLowerCase();
+
+    // Check if email already exists
+    if (users.some((u) => u.email.toLowerCase() === trimmedEmail)) {
+      return { success: false, error: 'An account with this email address already exists. Please sign in instead.' };
+    }
+
+    // Check if username already exists
+    if (users.some((u) => u.username?.toLowerCase() === trimmedUsername)) {
+      return { success: false, error: 'This username is already taken. Please choose another username.' };
+    }
+
+    const assignedChoir = data.primaryChoirId || 'choir-1';
+    const assignedRole: SystemRole = data.role || 'MEMBER';
+
+    const newUser: User = {
+      id: `usr-${Date.now()}`,
+      fullName: data.fullName.trim(),
+      email: trimmedEmail,
+      username: trimmedUsername,
+      password: data.password,
+      phone: data.phone?.trim() || '',
+      role: assignedRole,
+      assignedChoirIds: [assignedChoir],
+      primaryChoirId: assignedChoir
+    };
+
+    users.push(newUser);
+    setItem(STORAGE_KEYS.USERS, users);
+
+    // Auto-provision choir member record
+    try {
+      const members = this.getMembers();
+      if (!members.some((m) => m.email.toLowerCase() === trimmedEmail)) {
+        this.saveMember({
+          fullName: newUser.fullName,
+          email: newUser.email,
+          phone: newUser.phone,
+          primaryChoirId: assignedChoir,
+          role: 'Member',
+          vocalPart: 'Soprano',
+          status: 'ACTIVE'
+        }, 'Registration');
+      }
+    } catch (e) {
+      console.warn('Auto member provisioning note:', e);
+    }
+
+    this.addAuditLog(newUser.fullName, assignedRole, 'SIGN_UP', 'User', newUser.id, `User signed up account with choir '${assignedChoir}'`);
+    return { success: true, user: newUser };
+  },
+
+  verifyResetAccount(usernameOrEmail: string): { success: boolean; user?: User; error?: string } {
+    const users = this.getUsers();
+    const query = usernameOrEmail.trim().toLowerCase();
+    const found = users.find(
+      (u) => u.email.toLowerCase() === query || u.username?.toLowerCase() === query
+    );
+    if (!found) {
+      return { success: false, error: 'No account found matching that email or username.' };
+    }
+    return { success: true, user: found };
+  },
+
+  resetPassword(usernameOrEmail: string, newPassword: string): { success: boolean; error?: string } {
+    const users = this.getUsers();
+    const query = usernameOrEmail.trim().toLowerCase();
+    const idx = users.findIndex(
+      (u) => u.email.toLowerCase() === query || u.username?.toLowerCase() === query
+    );
+    if (idx === -1) {
+      return { success: false, error: 'User account not found.' };
+    }
+    users[idx].password = newPassword;
+    setItem(STORAGE_KEYS.USERS, users);
+    this.addAuditLog(users[idx].fullName, users[idx].role, 'PASSWORD_RESET', 'User', users[idx].id, 'Password was reset via password recovery');
+    return { success: true };
+  },
+
+  changePassword(userId: string, oldPassword: string, newPassword: string): { success: boolean; error?: string } {
+    const users = this.getUsers();
+    const idx = users.findIndex((u) => u.id === userId);
+    if (idx === -1) {
+      return { success: false, error: 'User account not found.' };
+    }
+    if (users[idx].password !== oldPassword) {
+      return { success: false, error: 'Current password is incorrect.' };
+    }
+    users[idx].password = newPassword;
+    setItem(STORAGE_KEYS.USERS, users);
+    this.addAuditLog(users[idx].fullName, users[idx].role, 'PASSWORD_CHANGE', 'User', users[idx].id, 'User changed password from account settings');
+    return { success: true };
+  },
+
+  updateUserProfile(userId: string, data: Partial<User>): { success: boolean; user?: User; error?: string } {
+    const users = this.getUsers();
+    const idx = users.findIndex((u) => u.id === userId);
+    if (idx === -1) {
+      return { success: false, error: 'User not found.' };
+    }
+    const updatedUser = { ...users[idx], ...data };
+    users[idx] = updatedUser;
+    setItem(STORAGE_KEYS.USERS, users);
+    this.addAuditLog(updatedUser.fullName, updatedUser.role, 'UPDATE_PROFILE', 'User', updatedUser.id, 'User updated their profile information');
+    return { success: true, user: updatedUser };
+  },
+
   // --- ORGANIZATION / SETTINGS ---
   getOrganization(): Organization {
     return getItem(STORAGE_KEYS.ORGANIZATION, INITIAL_ORGANIZATION);
@@ -126,7 +245,12 @@ export const DataStore = {
 
   // --- CHOIRS ---
   getChoirs(): Choir[] {
-    return getItem(STORAGE_KEYS.CHOIRS, INITIAL_CHOIRS);
+    const list = getItem(STORAGE_KEYS.CHOIRS, INITIAL_CHOIRS);
+    if (!list || list.length === 0) {
+      setItem(STORAGE_KEYS.CHOIRS, INITIAL_CHOIRS);
+      return INITIAL_CHOIRS;
+    }
+    return list;
   },
   getChoirById(id: string): Choir | undefined {
     return this.getChoirs().find((c) => c.id === id);

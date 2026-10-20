@@ -10,8 +10,10 @@ import {
   Sparkles,
   LogOut,
   UserCheck,
-  Menu
+  Menu,
+  User
 } from 'lucide-react';
+import { AccountModal } from '../auth/AccountModal';
 
 interface HeaderProps {
   onOpenAI: () => void;
@@ -22,6 +24,7 @@ interface HeaderProps {
 export function Header({ onOpenAI, onSearch, onToggleMobileMenu }: HeaderProps) {
   const { currentUser, currentRole, setRole, activeChoirId, setActiveChoirId, availableChoirs, allChoirs, logout } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
+  const [showAccountModal, setShowAccountModal] = useState(false);
 
   const roles: { key: SystemRole; label: string }[] = [
     { key: 'SUPER_ADMIN', label: 'Super Admin' },
@@ -132,6 +135,20 @@ export function Header({ onOpenAI, onSearch, onToggleMobileMenu }: HeaderProps) 
             </select>
           </div>
 
+          {/* User Account & Security Settings */}
+          <button
+            onClick={() => setShowAccountModal(true)}
+            title="My Account & Security"
+            className="flex items-center shrink-0 gap-2 bg-[#0d1322] hover:bg-slate-850 border border-slate-800 hover:border-orange-500/40 rounded-full pl-1.5 pr-3 py-1 text-xs transition-all group"
+          >
+            <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-white font-extrabold text-[10px] shadow-sm shadow-orange-500/30">
+              {currentUser?.fullName ? currentUser.fullName.charAt(0).toUpperCase() : 'U'}
+            </div>
+            <span className="font-semibold text-slate-200 group-hover:text-white hidden lg:inline max-w-[120px] truncate text-[11px]">
+              {currentUser?.fullName || 'My Account'}
+            </span>
+          </button>
+
           {/* Logout Button */}
           <button
             onClick={logout}
@@ -144,6 +161,12 @@ export function Header({ onOpenAI, onSearch, onToggleMobileMenu }: HeaderProps) 
         </div>
 
       </div>
+
+      {/* Account Profile & Password Modal */}
+      <AccountModal
+        isOpen={showAccountModal}
+        onClose={() => setShowAccountModal(false)}
+      />
     </header>
   );
 }
