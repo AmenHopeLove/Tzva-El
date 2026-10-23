@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export function AdminCustomization() {
-  const { currentRole, refreshData } = useAuth();
+  const { currentRole, refreshData, currentUser } = useAuth();
   const [org, setOrg] = useState<Organization>(() => DataStore.getOrganization());
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>(() => DataStore.getCustomFields());
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => DataStore.getAuditLogs());
@@ -73,6 +73,20 @@ export function AdminCustomization() {
       refreshData();
     }
   };
+
+  if (currentUser?.role !== 'SUPER_ADMIN') {
+    return (
+      <div className="bg-[#0b1120] border border-rose-500/30 rounded-2xl p-10 text-center space-y-4">
+        <div className="w-14 h-14 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto border border-rose-500/30">
+          <Settings className="w-7 h-7" />
+        </div>
+        <h3 className="text-lg font-bold text-white">Super Admin Settings Only</h3>
+        <p className="text-xs text-slate-400 max-w-md mx-auto">
+          System customization, branding parameters, and audit trails are exclusively accessible to Super Administrators.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -20,7 +20,7 @@ interface DashboardProps {
 }
 
 export function Dashboard({ onNavigate }: DashboardProps) {
-  const { activeChoirId, activeChoir, allChoirs } = useAuth();
+  const { activeChoirId, activeChoir, availableChoirs, allChoirs, hasPermission, currentUser } = useAuth();
   const [, setTick] = React.useState(0);
 
   React.useEffect(() => {
@@ -76,14 +76,14 @@ export function Dashboard({ onNavigate }: DashboardProps) {
               className="w-full md:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white text-xs font-extrabold px-5 py-2.5 rounded-full shadow-lg shadow-orange-500/30 transition-all"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>Mark Today's Attendance</span>
+              <span>{hasPermission('attendance.create') ? "Mark Today's Attendance" : "View Attendance Portal"}</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Pastoral Care Absence Alert Banner */}
-      {flaggedAbsences.length > 0 && (
+      {/* Pastoral Care Absence Alert Banner (Visible only to leaders with followup.view) */}
+      {hasPermission('followup.view') && flaggedAbsences.length > 0 && (
         <div className="bg-rose-950/60 border border-rose-500/40 rounded-xl p-4 text-rose-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg">
           <div className="flex items-start md:items-center gap-3">
             <div className="p-2 bg-rose-500/20 rounded-lg border border-rose-500/30">
@@ -147,17 +147,32 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           <div className="text-[11px] text-amber-400 mt-1 font-semibold">Rehearsals & Worship</div>
         </div>
 
-        {/* Pending Pastoral Care */}
-        <div className="bg-[#0b1120] border border-slate-800 rounded-xl p-4 text-slate-100 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-400">Pending Follow-ups</span>
-            <div className="p-2 bg-rose-500/10 rounded-lg text-rose-400">
-              <HeartHandshake className="w-4 h-4" />
+        {/* Pastoral Care for Leaders OR Assigned Choir for Members */}
+        {hasPermission('followup.view') ? (
+          <div className="bg-[#0b1120] border border-slate-800 rounded-xl p-4 text-slate-100 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-400">Pending Follow-ups</span>
+              <div className="p-2 bg-rose-500/10 rounded-lg text-rose-400">
+                <HeartHandshake className="w-4 h-4" />
+              </div>
             </div>
+            <div className="mt-2 text-2xl font-bold text-rose-400">{pendingFollowUps}</div>
+            <div className="text-[11px] text-rose-300 mt-1 font-semibold">Pastoral Care Tickets</div>
           </div>
-          <div className="mt-2 text-2xl font-bold text-rose-400">{pendingFollowUps}</div>
-          <div className="text-[11px] text-rose-300 mt-1 font-semibold">Pastoral Care Tickets</div>
-        </div>
+        ) : (
+          <div className="bg-[#0b1120] border border-slate-800 rounded-xl p-4 text-slate-100 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-400">My Choir Group</span>
+              <div className="p-2 bg-orange-500/10 rounded-lg text-orange-400">
+                <Users className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-2 text-base font-bold text-white truncate">
+              {availableChoirs[0]?.name || 'Choir Member'}
+            </div>
+            <div className="text-[11px] text-orange-400 mt-1 font-semibold">Active Member Profile</div>
+          </div>
+        )}
       </div>
 
       {/* Choir Breakdown & Events Visual Grid */}
@@ -170,16 +185,18 @@ export function Dashboard({ onNavigate }: DashboardProps) {
               <Users className="w-4 h-4 text-orange-400" />
               Active Choirs Attendance & Roster Breakdown
             </h3>
-            <button
-              onClick={() => onNavigate('reports')}
-              className="text-xs text-orange-400 hover:text-orange-300 font-semibold flex items-center gap-1"
-            >
-              Full Analytics <ArrowUpRight className="w-3.5 h-3.5" />
-            </button>
+            {hasPermission('reports.view') && (
+              <button
+                onClick={() => onNavigate('reports')}
+                className="text-xs text-orange-400 hover:text-orange-300 font-semibold flex items-center gap-1"
+              >
+                Full Analytics <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
           <div className="space-y-3">
-            {allChoirs.map((choir) => {
+            {((currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'WORSHIP_MINISTRY_LEADER') ? allChoirs : availableChoirs).map((choir) => {
               const choirMems = members.filter((m) => m.primaryChoirId === choir.id).length || 16;
               const rate = 85 + (choir.name.length % 12);
               return (

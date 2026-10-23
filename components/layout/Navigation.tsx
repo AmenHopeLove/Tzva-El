@@ -44,7 +44,7 @@ export function Navigation({ activeTab, onSelectTab, hasPermission, isMobileMenu
     { id: 'followup', label: 'Pastoral Care', icon: HeartHandshake, permission: 'followup.view', badge: 'Care' },
     { id: 'events', label: 'Events & Calendar', icon: Calendar, permission: 'events.view' },
     { id: 'songs', label: 'Song Library & Setlists', icon: Music, permission: 'songs.view' },
-    { id: 'rehearsals', label: 'Rehearsal Manager', icon: Clock, permission: 'attendance.view' },
+    { id: 'rehearsals', label: 'Rehearsal Manager', icon: Clock, permission: 'attendance.create' },
     { id: 'leave_requests', label: 'Leave Requests', icon: FileText, permission: 'members.view' },
     { id: 'announcements', label: 'Announcements', icon: Send, permission: 'members.view' },
     { id: 'reports', label: 'Reports & Analytics', icon: PieChart, permission: 'reports.view' },

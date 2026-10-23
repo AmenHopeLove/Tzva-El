@@ -92,24 +92,48 @@ export function Header({ onOpenAI, onSearch, onToggleMobileMenu }: HeaderProps) 
         {/* Third Row (Mobile) / Right (Desktop): Filters & Actions */}
         <div className="flex items-center justify-between w-full md:w-auto gap-3 order-2 md:order-3 overflow-x-auto pb-1 md:pb-0 hide-scrollbar">
           
-          {/* Multi-Choir Filter Dropdown */}
-          <div className="flex items-center shrink-0 gap-2 bg-[#0d1322] border border-orange-500/30 rounded-full px-3 py-1.5 text-xs shadow-inner">
-            <Filter className="w-3.5 h-3.5 text-orange-400" />
-            <select
-              value={activeChoirId}
-              onChange={(e) => setActiveChoirId(e.target.value)}
-              className="bg-transparent text-slate-200 font-bold border-none outline-none cursor-pointer pr-1 text-xs"
-            >
-              <option value="ALL" className="bg-[#0b1120] text-amber-300 font-bold">
-                All Choirs Combined
-              </option>
-              {allChoirs.map((c) => (
-                <option key={c.id} value={c.id} className="bg-[#0b1120] text-white">
-                  {c.name} ({c.code})
+          {/* Multi-Choir Filter Dropdown (Strictly isolated by user role) */}
+          {(currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'WORSHIP_MINISTRY_LEADER') ? (
+            <div className="flex items-center shrink-0 gap-2 bg-[#0d1322] border border-orange-500/30 rounded-full px-3 py-1.5 text-xs shadow-inner">
+              <Filter className="w-3.5 h-3.5 text-orange-400" />
+              <select
+                value={activeChoirId}
+                onChange={(e) => setActiveChoirId(e.target.value)}
+                className="bg-transparent text-slate-200 font-bold border-none outline-none cursor-pointer pr-1 text-xs"
+              >
+                <option value="ALL" className="bg-[#0b1120] text-amber-300 font-bold">
+                  All Choirs Combined
                 </option>
-              ))}
-            </select>
-          </div>
+                {allChoirs.map((c) => (
+                  <option key={c.id} value={c.id} className="bg-[#0b1120] text-white">
+                    {c.name} ({c.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : availableChoirs.length > 1 ? (
+            <div className="flex items-center shrink-0 gap-2 bg-[#0d1322] border border-slate-800 rounded-full px-3 py-1.5 text-xs">
+              <Filter className="w-3.5 h-3.5 text-orange-400" />
+              <select
+                value={activeChoirId}
+                onChange={(e) => setActiveChoirId(e.target.value)}
+                className="bg-transparent text-slate-200 font-bold border-none outline-none cursor-pointer pr-1 text-xs"
+              >
+                {availableChoirs.map((c) => (
+                  <option key={c.id} value={c.id} className="bg-[#0b1120] text-white">
+                    {c.name} ({c.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center shrink-0 gap-2 bg-[#0d1322] border border-slate-800 rounded-full px-3 py-1.5 text-xs text-slate-300">
+              <Filter className="w-3.5 h-3.5 text-orange-400" />
+              <span className="font-bold text-slate-200">
+                {availableChoirs[0]?.name || allChoirs.find((c) => c.id === activeChoirId)?.name || 'My Choir'}
+              </span>
+            </div>
+          )}
           
           {/* Desktop AI Assistant Launcher */}
           <button
@@ -120,31 +144,46 @@ export function Header({ onOpenAI, onSearch, onToggleMobileMenu }: HeaderProps) 
             <span>Worship AI</span>
           </button>
 
-          {/* Role Switcher */}
-          <div className="flex items-center shrink-0 gap-1.5 bg-[#0d1322] border border-slate-800 rounded-full px-3 py-1 text-xs">
-            <Shield className="w-3.5 h-3.5 text-orange-400" />
-            <select
-              value={currentRole}
-              onChange={(e) => setRole(e.target.value as SystemRole)}
-              className="bg-transparent text-orange-400 font-bold border-none outline-none cursor-pointer text-xs"
+          {/* Role Display / Preview Switcher (ONLY Super Admin accounts can preview roles) */}
+          {currentUser?.role === 'SUPER_ADMIN' ? (
+            <div
+              className="flex items-center shrink-0 gap-1.5 bg-[#0d1322] border border-orange-500/40 rounded-full px-3 py-1 text-xs shadow-inner"
+              title="Super Admin Role View Switcher (Preview Mode)"
             >
-              {roles.map((r) => (
-                <option key={r.key} value={r.key} className="bg-[#0b1120] text-white">
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </div>
+              <Shield className="w-3.5 h-3.5 text-orange-400" />
+              <span className="text-[10px] text-slate-400 font-medium hidden sm:inline">Preview:</span>
+              <select
+                value={currentRole}
+                onChange={(e) => setRole(e.target.value as SystemRole)}
+                className="bg-transparent text-orange-400 font-bold border-none outline-none cursor-pointer text-xs"
+              >
+                {roles.map((r) => (
+                  <option key={r.key} value={r.key} className="bg-[#0b1120] text-white">
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center shrink-0 gap-1.5 bg-[#0d1322] border border-slate-800 rounded-full px-3 py-1 text-xs text-slate-300">
+              <Shield className="w-3.5 h-3.5 text-slate-400" />
+              <span className="font-semibold text-xs text-slate-200">
+                {roles.find((r) => r.key === currentUser?.role)?.label || currentUser?.role || 'Member'}
+              </span>
+            </div>
+          )}
 
-          {/* Supabase Cloud Database Status & Sync */}
-          <button
-            onClick={() => setShowDbModal(true)}
-            title="Supabase Cloud Database Status & Sync"
-            className="flex items-center shrink-0 gap-1.5 bg-[#0d1322] hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/50 rounded-full px-3 py-1 text-xs transition-all text-slate-300 hover:text-white group"
-          >
-            <Database className="w-3.5 h-3.5 text-emerald-400 group-hover:animate-pulse" />
-            <span className="font-semibold text-[11px]">Database</span>
-          </button>
+          {/* Supabase Cloud Database Status & Sync (Super Admin ONLY) */}
+          {currentUser?.role === 'SUPER_ADMIN' && (
+            <button
+              onClick={() => setShowDbModal(true)}
+              title="Supabase Cloud Database Status & Sync (Super Admin Only)"
+              className="flex items-center shrink-0 gap-1.5 bg-[#0d1322] hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/50 rounded-full px-3 py-1 text-xs transition-all text-slate-300 hover:text-white group"
+            >
+              <Database className="w-3.5 h-3.5 text-emerald-400 group-hover:animate-pulse" />
+              <span className="font-semibold text-[11px]">Database</span>
+            </button>
+          )}
 
           {/* User Account & Security Settings */}
           <button

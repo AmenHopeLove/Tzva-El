@@ -19,7 +19,8 @@ import {
 } from 'lucide-react';
 
 export function AttendanceModule() {
-  const { activeChoirId, activeChoir, allChoirs } = useAuth();
+  const { activeChoirId, activeChoir, allChoirs, hasPermission, currentUser } = useAuth();
+  const canRecord = hasPermission('attendance.create') || hasPermission('attendance.edit');
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [activeSession, setActiveSession] = useState<AttendanceSession | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -124,13 +125,15 @@ export function AttendanceModule() {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowCreateSessionModal(true)}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-600/20 transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Attendance Session</span>
-        </button>
+        {canRecord && (
+          <button
+            onClick={() => setShowCreateSessionModal(true)}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-600/20 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Attendance Session</span>
+          </button>
+        )}
       </div>
 
       {/* Main Grid: Session Selector + Mobile 1-Tap Attendance Marker */}
@@ -179,13 +182,15 @@ export function AttendanceModule() {
                   <p className="text-xs text-slate-400">Date: {activeSession.sessionDate} | {members.length} Members Eligible</p>
                 </div>
 
-                <button
-                  onClick={handleSaveAttendance}
-                  className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 transition-all"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>Save Attendance</span>
-                </button>
+                {canRecord && (
+                  <button
+                    onClick={handleSaveAttendance}
+                    className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 transition-all"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Save Attendance</span>
+                  </button>
+                )}
               </div>
 
               {/* Members 1-Tap Status Grid */}
@@ -207,25 +212,36 @@ export function AttendanceModule() {
                         </div>
                       </div>
 
-                      {/* 1-Tap Mobile Status Selector Buttons */}
-                      <div className="grid grid-cols-4 gap-1.5 w-full sm:w-auto">
-                        {statuses.map((st) => {
-                          const isSelected = currentStatus === st.key;
-                          return (
-                            <button
-                              key={st.key}
-                              onClick={() => handleMarkStatus(member.id, st.key)}
-                              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-                                isSelected
-                                  ? `${st.color} shadow-md`
-                                  : 'bg-slate-800 border border-slate-700 text-slate-400 hover:text-white'
-                              }`}
-                            >
-                              {st.label}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      {/* 1-Tap Mobile Status Selector Buttons for Leaders / Read-only Pill for Members */}
+                      {canRecord ? (
+                        <div className="grid grid-cols-4 gap-1.5 w-full sm:w-auto">
+                          {statuses.map((st) => {
+                            const isSelected = currentStatus === st.key;
+                            return (
+                              <button
+                                key={st.key}
+                                onClick={() => handleMarkStatus(member.id, st.key)}
+                                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                                  isSelected
+                                    ? `${st.color} shadow-md`
+                                    : 'bg-slate-800 border border-slate-700 text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                {st.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                          currentStatus === 'PRESENT' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                          currentStatus === 'LATE' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                          currentStatus === 'EXCUSED' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' :
+                          'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                        }`}>
+                          {currentStatus}
+                        </span>
+                      )}
                     </div>
                   );
                 })}

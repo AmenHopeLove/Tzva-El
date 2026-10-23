@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 export function UserManagement() {
-  const { allChoirs, currentRole, refreshData } = useAuth();
+  const { allChoirs, currentRole, currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>(() => DataStore.getUsers());
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -82,6 +82,20 @@ export function UserManagement() {
     refreshUserList();
     alert(`Account created successfully for ${fullName}!`);
   };
+
+  if (currentUser?.role !== 'SUPER_ADMIN') {
+    return (
+      <div className="bg-[#0b1120] border border-rose-500/30 rounded-2xl p-10 text-center space-y-4">
+        <div className="w-14 h-14 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto border border-rose-500/30">
+          <Lock className="w-7 h-7" />
+        </div>
+        <h3 className="text-lg font-bold text-white">Super Admin Access Required</h3>
+        <p className="text-xs text-slate-400 max-w-md mx-auto">
+          User account generation and credential administration is strictly restricted to Super Administrators.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

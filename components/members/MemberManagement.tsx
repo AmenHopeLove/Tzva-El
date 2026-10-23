@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 export function MemberManagement() {
-  const { activeChoirId, setActiveChoirId, activeChoir, allChoirs, hasPermission } = useAuth();
+  const { activeChoirId, setActiveChoirId, activeChoir, availableChoirs, allChoirs, hasPermission, currentUser } = useAuth();
   const [members, setMembers] = useState<Member[]>(() => DataStore.getMembers());
   const [searchTerm, setSearchTerm] = useState('');
   const [vocalFilter, setVocalFilter] = useState<string>('ALL');
@@ -84,7 +84,14 @@ export function MemberManagement() {
     refreshList();
   };
 
+  const canViewAllChoirs = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'WORSHIP_MINISTRY_LEADER';
+  const allowedChoirIds = currentUser?.assignedChoirIds || (currentUser?.primaryChoirId ? [currentUser.primaryChoirId] : []);
+
   const filteredMembers = members.filter((m) => {
+    // If not super admin / worship leader, restrict exclusively to user's assigned choirs
+    if (!canViewAllChoirs && !allowedChoirIds.includes(m.primaryChoirId)) {
+      return false;
+    }
     const matchSearch =
       m.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       m.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -104,9 +111,9 @@ export function MemberManagement() {
             Choir Member Directory ({filteredMembers.length})
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            {choirFilter === 'ALL'
+            {canViewAllChoirs && choirFilter === 'ALL'
               ? `Showing all registered members across all ${allChoirs.length} worship choirs`
-              : allChoirs.find((c) => c.id === choirFilter)?.name || 'Choir Members'}
+              : allChoirs.find((c) => c.id === choirFilter)?.name || availableChoirs[0]?.name || 'Choir Members'}
           </p>
         </div>
 
@@ -147,22 +154,29 @@ export function MemberManagement() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <SlidersHorizontal className="w-4 h-4 text-orange-400" />
-            <span className="text-xs text-slate-400 font-medium">Choir:</span>
-            <select
-              value={choirFilter}
-              onChange={(e) => setChoirFilter(e.target.value)}
-              className="bg-[#0f172a] border border-slate-800 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none font-bold"
-            >
-              <option value="ALL">All Choirs Combined</option>
-              {allChoirs.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {canViewAllChoirs || availableChoirs.length > 1 ? (
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="w-4 h-4 text-orange-400" />
+              <span className="text-xs text-slate-400 font-medium">Choir:</span>
+              <select
+                value={choirFilter}
+                onChange={(e) => setChoirFilter(e.target.value)}
+                className="bg-[#0f172a] border border-slate-800 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none font-bold"
+              >
+                {canViewAllChoirs && <option value="ALL">All Choirs Combined</option>}
+                {(canViewAllChoirs ? allChoirs : availableChoirs).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <SlidersHorizontal className="w-4 h-4 text-orange-400" />
+              <span>Choir: <strong className="text-slate-200">{availableChoirs[0]?.name || 'My Choir'}</strong></span>
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400 font-medium">Vocal Part:</span>
@@ -250,7 +264,7 @@ export function MemberManagement() {
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-            {activeChoirId !== 'ALL' && members.length > 0 && (
+            {canViewAllChoirs && activeChoirId !== 'ALL' && members.length > 0 && (
               <button
                 type="button"
                 onClick={() => {

@@ -285,40 +285,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const setRole = (role: SystemRole) => {
+    // Strict RBAC: Only authentic SUPER_ADMIN accounts may switch preview roles
+    if (currentUser?.role !== 'SUPER_ADMIN') {
+      console.warn('Unauthorized role switch attempt blocked for non-super-admin user');
+      return;
+    }
     setCurrentRole(role);
-    if (currentUser) {
-      setCurrentUser({
-        ...currentUser,
-        role
-      });
-      if (role !== 'SUPER_ADMIN' && activeChoirId === 'ALL') {
-        setActiveChoirId(currentUser.primaryChoirId || 'choir-1');
-      }
+    // Preserves authentic account role (currentUser.role) without mutation
+    if (role !== 'SUPER_ADMIN' && activeChoirId === 'ALL') {
+      setActiveChoirId(currentUser.primaryChoirId || 'choir-1');
     }
   };
 
-  // Enforce strict available choir list based on user role
+  const handleSetActiveChoirId = (id: string) => {
+    // Non-admins cannot access the combined multi-choir view
+    if (id === 'ALL' && currentUser?.role !== 'SUPER_ADMIN' && currentUser?.role !== 'WORSHIP_MINISTRY_LEADER') {
+      console.warn('Access denied: Cannot view ALL choirs');
+      return;
+    }
+    setActiveChoirId(id);
+  };
+
+  // Enforce strict available choir list based on authentic user role
   const availableChoirs = React.useMemo(() => {
-    if (currentRole === 'SUPER_ADMIN' || currentRole === 'WORSHIP_MINISTRY_LEADER') {
+    if (currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'WORSHIP_MINISTRY_LEADER') {
       return allChoirs;
     }
     if (!currentUser) return [];
     // Restrict non-Super Admins to ONLY their assigned choirs
-    const userChoirIds = currentUser.assignedChoirIds || [currentUser.primaryChoirId];
+    const userChoirIds = currentUser.assignedChoirIds || (currentUser.primaryChoirId ? [currentUser.primaryChoirId] : []);
     return allChoirs.filter((c) => userChoirIds.includes(c.id) || c.id === currentUser.primaryChoirId);
-  }, [allChoirs, currentRole, currentUser]);
+  }, [allChoirs, currentUser]);
 
   const hasPermission = (permission: PermissionKey): boolean => {
-    const allowedList = ROLE_PERMISSIONS_MAP[currentRole] || [];
+    // If the account is a Super Admin, respect active preview role.
+    // If account is NOT a Super Admin, ALWAYS strictly enforce authentic account role!
+    const effectiveRole = currentUser?.role === 'SUPER_ADMIN' ? currentRole : (currentUser?.role || 'MEMBER');
+    const allowedList = ROLE_PERMISSIONS_MAP[effectiveRole] || [];
     return allowedList.includes(permission);
   };
 
   const canAccessChoir = (choirId: string): boolean => {
-    if (currentRole === 'SUPER_ADMIN' || currentRole === 'WORSHIP_MINISTRY_LEADER') {
+    if (currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'WORSHIP_MINISTRY_LEADER') {
       return true;
     }
     if (activeChoirId === 'ALL') return false;
-    return activeChoirId === choirId;
+    const userChoirIds = currentUser?.assignedChoirIds || (currentUser?.primaryChoirId ? [currentUser.primaryChoirId] : []);
+    return userChoirIds.includes(choirId) || currentUser?.primaryChoirId === choirId;
   };
 
   const activeChoir = allChoirs.find((c) => c.id === activeChoirId);
@@ -341,7 +354,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updateProfile,
         logout,
         setRole,
-        setActiveChoirId,
+        setActiveChoirId: handleSetActiveChoirId,
         hasPermission,
         canAccessChoir,
         refreshData
