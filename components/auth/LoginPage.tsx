@@ -77,19 +77,22 @@ export function LoginPage() {
   const passwordStrength = getPasswordStrength(signupPassword);
 
   // --- HANDLERS ---
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccessMsg('');
     setIsLoading(true);
 
-    setTimeout(() => {
-      const ok = login(loginIdentifier.trim(), loginPassword);
+    try {
+      const ok = await login(loginIdentifier.trim(), loginPassword);
       setIsLoading(false);
       if (!ok) {
         setError('Invalid username/email or password. Please verify your credentials or use Forgot Password.');
       }
-    }, 400);
+    } catch {
+      setIsLoading(false);
+      setError('An error occurred during sign in. Please try again.');
+    }
   };
 
   const handleSignupSubmit = (e: React.FormEvent) => {

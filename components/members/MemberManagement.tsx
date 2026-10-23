@@ -21,6 +21,7 @@ export function MemberManagement() {
   const [members, setMembers] = useState<Member[]>(() => DataStore.getMembers());
   const [searchTerm, setSearchTerm] = useState('');
   const [vocalFilter, setVocalFilter] = useState<string>('ALL');
+  const [choirFilter, setChoirFilter] = useState<string>('ALL');
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -34,9 +35,16 @@ export function MemberManagement() {
   const [instrument, setInstrument] = useState('None');
   const [skillLevel, setSkillLevel] = useState<SkillLevel>('Intermediate');
 
-  const refreshList = useCallback(() => {
-    // Always load all members from DataStore so filtering works across all choirs or selected choir
-    setMembers(DataStore.getMembers());
+  const refreshList = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await DataStore.syncFromSupabase();
+    } catch (e) {
+      console.warn('Supabase sync note:', e);
+    } finally {
+      setMembers(DataStore.getMembers());
+      setIsRefreshing(false);
+    }
   }, []);
 
   // Refresh members whenever activeChoirId changes
@@ -82,7 +90,7 @@ export function MemberManagement() {
       m.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       m.phone.includes(searchTerm);
     const matchVocal = vocalFilter === 'ALL' || m.vocalPart === vocalFilter;
-    const matchChoir = activeChoirId === 'ALL' || m.primaryChoirId === activeChoirId;
+    const matchChoir = choirFilter === 'ALL' || m.primaryChoirId === choirFilter;
     return matchSearch && matchVocal && matchChoir;
   });
 
@@ -96,23 +104,21 @@ export function MemberManagement() {
             Choir Member Directory ({filteredMembers.length})
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            {activeChoir ? activeChoir.name : `Showing members across all ${allChoirs.length} worship choirs`}
+            {choirFilter === 'ALL'
+              ? `Showing all registered members across all ${allChoirs.length} worship choirs`
+              : allChoirs.find((c) => c.id === choirFilter)?.name || 'Choir Members'}
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => {
-              setIsRefreshing(true);
-              refreshList();
-              setTimeout(() => setIsRefreshing(false), 500);
-            }}
-            title="Refresh Member List"
+            onClick={refreshList}
+            title="Refresh Member List from Supabase Cloud"
             className="flex items-center gap-1.5 bg-[#0f172a] hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white px-3 py-2 rounded-full text-xs font-semibold transition-all"
           >
             <RotateCw className={`w-3.5 h-3.5 text-orange-400 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
           </button>
 
           {hasPermission('members.create') && (
@@ -140,21 +146,39 @@ export function MemberManagement() {
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          <SlidersHorizontal className="w-4 h-4 text-orange-400" />
-          <span className="text-xs text-slate-400">Vocal Part:</span>
-          <select
-            value={vocalFilter}
-            onChange={(e) => setVocalFilter(e.target.value)}
-            className="bg-[#0f172a] border border-slate-800 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
-          >
-            <option value="ALL">All Vocal Parts</option>
-            <option value="Soprano">Soprano</option>
-            <option value="Alto">Alto</option>
-            <option value="Tenor">Tenor</option>
-            <option value="Bass">Bass</option>
-            <option value="Lead">Lead Vocalist</option>
-          </select>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal className="w-4 h-4 text-orange-400" />
+            <span className="text-xs text-slate-400 font-medium">Choir:</span>
+            <select
+              value={choirFilter}
+              onChange={(e) => setChoirFilter(e.target.value)}
+              className="bg-[#0f172a] border border-slate-800 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none font-bold"
+            >
+              <option value="ALL">All Choirs Combined</option>
+              {allChoirs.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-medium">Vocal Part:</span>
+            <select
+              value={vocalFilter}
+              onChange={(e) => setVocalFilter(e.target.value)}
+              className="bg-[#0f172a] border border-slate-800 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none"
+            >
+              <option value="ALL">All Vocal Parts</option>
+              <option value="Soprano">Soprano</option>
+              <option value="Alto">Alto</option>
+              <option value="Tenor">Tenor</option>
+              <option value="Bass">Bass</option>
+              <option value="Lead">Lead Vocalist</option>
+            </select>
+          </div>
         </div>
       </div>
 

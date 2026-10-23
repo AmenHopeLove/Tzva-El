@@ -100,12 +100,10 @@ export function Header({ onOpenAI, onSearch, onToggleMobileMenu }: HeaderProps) 
               onChange={(e) => setActiveChoirId(e.target.value)}
               className="bg-transparent text-slate-200 font-bold border-none outline-none cursor-pointer pr-1 text-xs"
             >
-              {isSuperAdmin && (
-                <option value="ALL" className="bg-[#0b1120] text-amber-300 font-bold">
-                  All Choirs Combined (Super Admin)
-                </option>
-              )}
-              {availableChoirs.map((c) => (
+              <option value="ALL" className="bg-[#0b1120] text-amber-300 font-bold">
+                All Choirs Combined
+              </option>
+              {allChoirs.map((c) => (
                 <option key={c.id} value={c.id} className="bg-[#0b1120] text-white">
                   {c.name} ({c.code})
                 </option>

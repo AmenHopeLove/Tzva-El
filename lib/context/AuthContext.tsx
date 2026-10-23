@@ -7,6 +7,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, SystemRole, PermissionKey, Choir, VocalPart } from '../types';
 import { DataStore } from '../services/store';
+import { supabase, isSupabaseConfigured } from '../supabase/client';
+import { toCamelCase } from '../supabase/dbService';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -16,7 +18,7 @@ interface AuthContextType {
   activeChoir?: Choir;
   availableChoirs: Choir[]; // Filtered list of choirs user is allowed to access
   allChoirs: Choir[];
-  login: (usernameOrEmail: string, pass: string) => boolean;
+  login: (usernameOrEmail: string, pass: string) => boolean | Promise<boolean>;
   signUp: (data: {
     fullName: string;
     email: string;
@@ -139,35 +141,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     DataStore.initStore();
-    const choirsList = DataStore.getChoirs();
-    setAllChoirs(choirsList);
+    setAllChoirs(DataStore.getChoirs());
 
-    // Session persistence check
-    if (typeof window !== 'undefined') {
-      const savedUserId = localStorage.getItem('worship_session_user_id');
-      if (savedUserId) {
-        const users = DataStore.getUsers();
-        const user = users.find((u) => u.id === savedUserId);
-        if (user) {
-          setCurrentUser(user);
-          setIsAuthenticated(true);
-          setCurrentRole(user.role);
-          setActiveChoirId(user.role === 'SUPER_ADMIN' ? 'ALL' : (user.primaryChoirId || user.assignedChoirIds[0] || 'choir-1'));
-          return;
+    const checkSession = () => {
+      if (typeof window !== 'undefined') {
+        const savedUserId = localStorage.getItem('worship_session_user_id');
+        if (savedUserId) {
+          const users = DataStore.getUsers();
+          const user = users.find((u) => u.id === savedUserId);
+          if (user) {
+            setCurrentUser(user);
+            setIsAuthenticated(true);
+            setCurrentRole(user.role);
+            setActiveChoirId(user.role === 'SUPER_ADMIN' ? 'ALL' : (user.primaryChoirId || user.assignedChoirIds[0] || 'choir-1'));
+            return;
+          }
         }
       }
-    }
-    // Default to logged out state if no active session
-    setCurrentUser(null);
-    setIsAuthenticated(false);
+    };
+
+    checkSession();
+
+    // Listen to real-time and Supabase cloud data updates
+    const handleUpdate = () => {
+      setAllChoirs(DataStore.getChoirs());
+      checkSession();
+    };
+
+    window.addEventListener('worship_data_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+
+    return () => {
+      window.removeEventListener('worship_data_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, []);
 
   const refreshData = () => {
     setAllChoirs(DataStore.getChoirs());
   };
 
-  const login = (usernameOrEmail: string, pass: string): boolean => {
-    const user = DataStore.authenticateUser(usernameOrEmail, pass);
+  const login = async (usernameOrEmail: string, pass: string): Promise<boolean> => {
+    let user = DataStore.authenticateUser(usernameOrEmail, pass);
+
+    // If user is not yet loaded into local cache, query Supabase cloud directly
+    if (!user && isSupabaseConfigured()) {
+      try {
+        const query = usernameOrEmail.trim().toLowerCase();
+        const { data } = await supabase
+          .from('users')
+          .select('*')
+          .or(`email.ilike.${query},username.ilike.${query}`)
+          .limit(1);
+
+        if (data && data.length > 0) {
+          const cloudUser = toCamelCase(data[0]) as User;
+          if (cloudUser.password === pass) {
+            user = cloudUser;
+            // Cache locally so subsequent calls are instant
+            const localUsers = DataStore.getUsers();
+            if (!localUsers.some((u) => u.id === user!.id)) {
+              localUsers.push(user!);
+              localStorage.setItem('worship_users_v2', JSON.stringify(localUsers));
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Direct cloud login check note:', err);
+      }
+    }
+
     if (user) {
       setCurrentUser(user);
       setIsAuthenticated(true);

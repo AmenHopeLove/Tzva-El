@@ -45,6 +45,10 @@ export function UserManagement() {
   };
 
   useEffect(() => {
+    DataStore.syncFromSupabase().then(() => {
+      refreshUserList();
+    });
+
     const handleUpdate = () => {
       refreshUserList();
     };
