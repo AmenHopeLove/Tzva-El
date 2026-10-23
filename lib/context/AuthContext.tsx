@@ -5,7 +5,7 @@
 // ============================================================================
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, SystemRole, PermissionKey, Choir } from '../types';
+import { User, SystemRole, PermissionKey, Choir, VocalPart } from '../types';
 import { DataStore } from '../services/store';
 
 interface AuthContextType {
@@ -25,6 +25,7 @@ interface AuthContextType {
     phone?: string;
     primaryChoirId?: string;
     role?: SystemRole;
+    vocalPart?: VocalPart;
   }) => { success: boolean; user?: User; error?: string };
   verifyResetAccount: (usernameOrEmail: string) => { success: boolean; user?: User; error?: string };
   resetPassword: (usernameOrEmail: string, newPassword: string) => { success: boolean; error?: string };
@@ -194,6 +195,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     phone?: string;
     primaryChoirId?: string;
     role?: SystemRole;
+    vocalPart?: VocalPart;
   }) => {
     const res = DataStore.signUpUser(data);
     if (res.success && res.user) {

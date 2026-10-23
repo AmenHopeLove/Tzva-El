@@ -121,6 +121,7 @@ export function LoginPage() {
         password: signupPassword,
         phone: signupPhone,
         primaryChoirId: signupChoirId,
+        vocalPart: signupVocalRole as any,
         role: 'MEMBER'
       });
       setIsLoading(false);

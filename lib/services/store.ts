@@ -1,5 +1,6 @@
 // ============================================================================
-// LOCAL STORAGE & DATA STORE ENGINE FOR WORSHIP MINISTRY PLATFORM
+// HYBRID DATA STORE ENGINE FOR WORSHIP MINISTRY PLATFORM
+// LOCAL CACHE + ASYNCHRONOUS SUPABASE CLOUD PERSISTENCE
 // ============================================================================
 
 import {
@@ -20,10 +21,12 @@ import {
   Organization,
   User,
   SystemRole,
-  AppNotification
+  AppNotification,
+  VocalPart
 } from '../types';
 
 import { INITIAL_ORGANIZATION, INITIAL_CHOIRS, INITIAL_CUSTOM_FIELDS, generateSeedMembers, INITIAL_SONGS, INITIAL_EVENTS, INITIAL_FOLLOW_UPS, INITIAL_AUDIT_LOGS, INITIAL_ANNOUNCEMENTS, INITIAL_USERS } from './seedData';
+import { SupabaseDbService } from '../supabase/dbService';
 
 const STORAGE_KEYS = {
   ORGANIZATION: 'worship_org_v2',
@@ -60,6 +63,7 @@ function setItem<T>(key: string, value: T): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    window.dispatchEvent(new CustomEvent('worship_data_updated', { detail: { key } }));
   } catch (err) {
     console.error(`Error writing ${key} to LocalStorage:`, err);
   }
@@ -88,6 +92,215 @@ export const DataStore = {
       setItem(STORAGE_KEYS.LEAVE_REQUESTS, []);
       setItem(STORAGE_KEYS.NOTIFICATIONS, []);
     }
+    this.syncUsersAndMembers();
+    // Trigger background pull from Supabase to refresh local cache with cloud data
+    this.syncFromSupabase();
+
+    // Subscribe to realtime changes so all windows/accounts immediately stay in sync
+    if (typeof window !== 'undefined' && !(window as any).__worship_realtime_initialized) {
+      (window as any).__worship_realtime_initialized = true;
+      SupabaseDbService.subscribeToChanges(() => {
+        this.syncFromSupabase();
+      });
+    }
+  },
+
+  // --- SUPABASE CLOUD SYNCHRONIZATION ---
+  async syncFromSupabase() {
+    if (typeof window === 'undefined') return;
+    try {
+      const health = await SupabaseDbService.checkHealth();
+      if (!health.configured || !health.tablesExist) {
+        return;
+      }
+
+      const [
+        sbChoirs,
+        sbMembers,
+        sbUsers,
+        sbSessions,
+        sbRecords,
+        sbFollowUps,
+        sbEvents,
+        sbAssignments,
+        sbSongs,
+        sbAnnouncements,
+        sbAuditLogs,
+        sbOrg
+      ] = await Promise.all([
+        SupabaseDbService.fetchChoirs(),
+        SupabaseDbService.fetchMembers(),
+        SupabaseDbService.fetchUsers(),
+        SupabaseDbService.fetchAttendanceSessions(),
+        SupabaseDbService.fetchAttendanceRecords(),
+        SupabaseDbService.fetchFollowUps(),
+        SupabaseDbService.fetchEvents(),
+        SupabaseDbService.fetchAssignments(),
+        SupabaseDbService.fetchSongs(),
+        SupabaseDbService.fetchAnnouncements(),
+        SupabaseDbService.fetchAuditLogs(),
+        SupabaseDbService.fetchOrganization()
+      ]);
+
+      let updated = false;
+
+      // 1. RECONCILE MEMBERS (Two-Way Merge & Cloud Backfill)
+      const localMembers = getItem<Member[]>(STORAGE_KEYS.MEMBERS, []);
+      const memberMap = new Map<string, Member>();
+      if (sbMembers && sbMembers.length > 0) {
+        sbMembers.forEach((m) => memberMap.set(m.id, m));
+      }
+      localMembers.forEach((lm) => {
+        if (!memberMap.has(lm.id)) {
+          memberMap.set(lm.id, lm);
+          // Upload local member to Supabase cloud so all other accounts see it
+          SupabaseDbService.upsertMember(lm);
+        }
+      });
+      const reconciledMembers = Array.from(memberMap.values());
+      localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(reconciledMembers));
+      updated = true;
+
+      // 2. RECONCILE USERS (Two-Way Merge & Cloud Backfill)
+      const localUsers = getItem<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+      const userMap = new Map<string, User>();
+      if (sbUsers && sbUsers.length > 0) {
+        sbUsers.forEach((u) => userMap.set(u.id, u));
+      }
+      localUsers.forEach((lu) => {
+        if (!userMap.has(lu.id)) {
+          userMap.set(lu.id, lu);
+          SupabaseDbService.upsertUser(lu);
+        }
+      });
+      const reconciledUsers = Array.from(userMap.values());
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(reconciledUsers));
+
+      // 3. RECONCILE CHOIRS
+      if (sbChoirs && sbChoirs.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.CHOIRS, JSON.stringify(sbChoirs));
+      }
+
+      // 4. RECONCILE ATTENDANCE SESSIONS & RECORDS
+      if (sbSessions && sbSessions.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.ATTENDANCE_SESSIONS, JSON.stringify(sbSessions));
+      }
+      if (sbRecords && sbRecords.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.ATTENDANCE_RECORDS, JSON.stringify(sbRecords));
+      }
+
+      // 5. RECONCILE FOLLOW UPS
+      if (sbFollowUps && sbFollowUps.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.FOLLOW_UPS, JSON.stringify(sbFollowUps));
+      }
+
+      // 6. RECONCILE EVENTS
+      if (sbEvents && sbEvents.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(sbEvents));
+      }
+
+      // 7. RECONCILE ASSIGNMENTS
+      if (sbAssignments && sbAssignments.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.ASSIGNMENTS, JSON.stringify(sbAssignments));
+      }
+
+      // 8. RECONCILE SONGS
+      if (sbSongs && sbSongs.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.SONGS, JSON.stringify(sbSongs));
+      }
+
+      // 9. RECONCILE ANNOUNCEMENTS
+      if (sbAnnouncements && sbAnnouncements.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(sbAnnouncements));
+      }
+
+      // 10. RECONCILE AUDIT LOGS
+      if (sbAuditLogs && sbAuditLogs.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(sbAuditLogs));
+      }
+
+      // 11. RECONCILE ORGANIZATION
+      if (sbOrg) {
+        localStorage.setItem(STORAGE_KEYS.ORGANIZATION, JSON.stringify(sbOrg));
+      }
+
+      if (updated) {
+        window.dispatchEvent(new CustomEvent('worship_data_updated', { detail: { source: 'supabase' } }));
+      }
+    } catch (e) {
+      console.warn('Sync from Supabase warning:', e);
+    }
+  },
+
+  async pushAllToSupabase() {
+    return SupabaseDbService.syncAllToSupabase({
+      organization: this.getOrganization(),
+      users: this.getUsers(),
+      choirs: this.getChoirs(),
+      members: this.getMembers(),
+      attendanceSessions: this.getAttendanceSessions(),
+      attendanceRecords: getItem(STORAGE_KEYS.ATTENDANCE_RECORDS, []),
+      followUps: this.getFollowUps(),
+      events: this.getEvents(),
+      assignments: this.getAssignments(),
+      songs: this.getSongs(),
+      announcements: this.getAnnouncements(),
+      auditLogs: this.getAuditLogs(),
+      customFields: this.getCustomFields()
+    });
+  },
+
+  // --- AUTOMATIC USER & MEMBER SYNCHRONIZATION ---
+  syncUsersAndMembers() {
+    if (typeof window === 'undefined') return;
+    try {
+      const users = getItem<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+      const members = getItem<Member[]>(STORAGE_KEYS.MEMBERS, []);
+      const choirs = this.getChoirs();
+      let changed = false;
+
+      users.forEach((usr) => {
+        // Skip super admin from choir member directory
+        if (usr.role === 'SUPER_ADMIN' || usr.email.toLowerCase() === 'admin@church.org') {
+          return;
+        }
+        const exists = members.some(
+          (m) => (m.email && m.email.toLowerCase() === usr.email.toLowerCase()) || m.fullName.toLowerCase() === usr.fullName.toLowerCase()
+        );
+        if (!exists) {
+          const assignedChoirId = usr.primaryChoirId || usr.assignedChoirIds?.[0] || 'choir-1';
+          const choir = choirs.find((c) => c.id === assignedChoirId);
+          const newMember: Member = {
+            id: `mem-${usr.id.replace('usr-', '')}`,
+            organizationId: 'org-001',
+            userId: usr.id,
+            fullName: usr.fullName,
+            email: usr.email,
+            phone: usr.phone || '',
+            gender: 'Male',
+            dateJoined: new Date().toISOString().split('T')[0],
+            departments: ['Vocal'],
+            vocalPart: 'Soprano',
+            skillLevel: 'Intermediate',
+            status: 'ACTIVE',
+            consecutiveAbsences: 0,
+            createdAt: new Date().toISOString().split('T')[0],
+            primaryChoirId: assignedChoirId,
+            choirName: choir?.name || 'Sanctuary Worship Choir'
+          };
+          members.push(newMember);
+          changed = true;
+          // Persist to Supabase
+          SupabaseDbService.upsertMember(newMember);
+        }
+      });
+
+      if (changed) {
+        localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
+      }
+    } catch (e) {
+      console.warn('Sync users and members note:', e);
+    }
   },
 
   // --- USER ACCOUNTS MANAGEMENT (SUPER ADMIN) ---
@@ -102,6 +315,29 @@ export const DataStore = {
     };
     users.push(newUser);
     setItem(STORAGE_KEYS.USERS, users);
+
+    // Persist to Supabase
+    SupabaseDbService.upsertUser(newUser);
+
+    // Auto-provision choir member record for non-super-admin users
+    if (newUser.role !== 'SUPER_ADMIN') {
+      try {
+        const members = this.getMembers();
+        if (!members.some((m) => m.email.toLowerCase() === newUser.email.toLowerCase())) {
+          this.saveMember({
+            fullName: newUser.fullName,
+            email: newUser.email,
+            phone: newUser.phone || '',
+            primaryChoirId: newUser.primaryChoirId || 'choir-1',
+            vocalPart: 'Tenor',
+            status: 'ACTIVE'
+          }, userContext);
+        }
+      } catch (e) {
+        console.warn('Auto member provisioning note:', e);
+      }
+    }
+
     this.addAuditLog(userContext, 'SUPER_ADMIN', 'CREATE_USER_ACCOUNT', 'User', newUser.id, `Created account for '${newUser.fullName}' (${newUser.role}) assigned to choir '${newUser.primaryChoirId}'`);
     return newUser;
   },
@@ -121,6 +357,7 @@ export const DataStore = {
     phone?: string;
     primaryChoirId?: string;
     role?: SystemRole;
+    vocalPart?: VocalPart;
   }): { success: boolean; user?: User; error?: string } {
     const users = this.getUsers();
     const trimmedEmail = data.email.trim().toLowerCase();
@@ -154,6 +391,9 @@ export const DataStore = {
     users.push(newUser);
     setItem(STORAGE_KEYS.USERS, users);
 
+    // Persist to Supabase
+    SupabaseDbService.upsertUser(newUser);
+
     // Auto-provision choir member record
     try {
       const members = this.getMembers();
@@ -163,8 +403,8 @@ export const DataStore = {
           email: newUser.email,
           phone: newUser.phone,
           primaryChoirId: assignedChoir,
-          role: 'Member',
-          vocalPart: 'Soprano',
+          role: 'Member' as any,
+          vocalPart: data.vocalPart || 'Soprano',
           status: 'ACTIVE'
         }, 'Registration');
       }
@@ -199,6 +439,8 @@ export const DataStore = {
     }
     users[idx].password = newPassword;
     setItem(STORAGE_KEYS.USERS, users);
+    // Persist to Supabase
+    SupabaseDbService.upsertUser(users[idx]);
     this.addAuditLog(users[idx].fullName, users[idx].role, 'PASSWORD_RESET', 'User', users[idx].id, 'Password was reset via password recovery');
     return { success: true };
   },
@@ -214,6 +456,8 @@ export const DataStore = {
     }
     users[idx].password = newPassword;
     setItem(STORAGE_KEYS.USERS, users);
+    // Persist to Supabase
+    SupabaseDbService.upsertUser(users[idx]);
     this.addAuditLog(users[idx].fullName, users[idx].role, 'PASSWORD_CHANGE', 'User', users[idx].id, 'User changed password from account settings');
     return { success: true };
   },
@@ -227,6 +471,8 @@ export const DataStore = {
     const updatedUser = { ...users[idx], ...data };
     users[idx] = updatedUser;
     setItem(STORAGE_KEYS.USERS, users);
+    // Persist to Supabase
+    SupabaseDbService.upsertUser(updatedUser);
     this.addAuditLog(updatedUser.fullName, updatedUser.role, 'UPDATE_PROFILE', 'User', updatedUser.id, 'User updated their profile information');
     return { success: true, user: updatedUser };
   },
@@ -239,6 +485,8 @@ export const DataStore = {
     const current = this.getOrganization();
     const updated = { ...current, ...data };
     setItem(STORAGE_KEYS.ORGANIZATION, updated);
+    // Persist to Supabase
+    SupabaseDbService.upsertOrganization(updated);
     this.addAuditLog(userContext, 'SUPER_ADMIN', 'UPDATE_SETTINGS', 'Organization', current.id, 'Updated church settings');
     return updated;
   },
@@ -281,17 +529,32 @@ export const DataStore = {
       this.addAuditLog(userContext, 'SUPER_ADMIN', 'CREATE_CHOIR', 'Choir', updated.id, `Created new choir '${updated.name}'`);
     }
     setItem(STORAGE_KEYS.CHOIRS, choirs);
+    // Persist to Supabase
+    SupabaseDbService.upsertChoir(updated);
     return updated;
   },
   deleteChoir(id: string, userContext = 'Super Admin') {
     const choirs = this.getChoirs().filter((c) => c.id !== id);
     setItem(STORAGE_KEYS.CHOIRS, choirs);
+    // Persist to Supabase
+    SupabaseDbService.deleteChoir(id);
     this.addAuditLog(userContext, 'SUPER_ADMIN', 'DELETE_CHOIR', 'Choir', id, `Deleted choir ${id}`);
   },
 
   // --- MEMBERS ---
   getMembers(choirIdFilter?: string): Member[] {
-    const members = getItem(STORAGE_KEYS.MEMBERS, generateSeedMembers());
+    this.syncUsersAndMembers();
+    const rawMembers = getItem<Member[]>(STORAGE_KEYS.MEMBERS, generateSeedMembers());
+    const choirs = this.getChoirs();
+    const members = rawMembers.map((m) => {
+      if (!m.choirName || m.choirName === 'Unassigned') {
+        const found = choirs.find((c) => c.id === m.primaryChoirId);
+        if (found) {
+          return { ...m, choirName: found.name };
+        }
+      }
+      return m;
+    });
     if (choirIdFilter && choirIdFilter !== 'ALL') {
       return members.filter((m) => m.primaryChoirId === choirIdFilter);
     }
@@ -331,11 +594,15 @@ export const DataStore = {
       this.addAuditLog(userContext, 'ADMIN', 'CREATE_MEMBER', 'Member', updated.id, `Created new member '${updated.fullName}' in ${choir?.name}`);
     }
     setItem(STORAGE_KEYS.MEMBERS, members);
+    // Persist to Supabase
+    SupabaseDbService.upsertMember(updated);
     return updated;
   },
   deleteMember(id: string, userContext = 'Admin') {
     const members = this.getMembers().filter((m) => m.id !== id);
     setItem(STORAGE_KEYS.MEMBERS, members);
+    // Persist to Supabase
+    SupabaseDbService.deleteMember(id);
     this.addAuditLog(userContext, 'ADMIN', 'DELETE_MEMBER', 'Member', id, `Deleted member ID ${id}`);
   },
 
@@ -353,6 +620,8 @@ export const DataStore = {
     };
     fields.push(newField);
     setItem(STORAGE_KEYS.CUSTOM_FIELDS, fields);
+    // Persist to Supabase
+    SupabaseDbService.upsertCustomField(newField);
     return newField;
   },
 
@@ -378,6 +647,8 @@ export const DataStore = {
     };
     sessions.unshift(newSession);
     setItem(STORAGE_KEYS.ATTENDANCE_SESSIONS, sessions);
+    // Persist to Supabase
+    SupabaseDbService.upsertAttendanceSession(newSession);
     return newSession;
   },
   saveAttendanceRecords(
@@ -391,6 +662,7 @@ export const DataStore = {
 
     let present = 0;
     let absent = 0;
+    const recordsToPersist: AttendanceRecord[] = [];
 
     records.forEach((r) => {
       const recId = `rec-${sessionId}-${r.memberId}`;
@@ -409,6 +681,7 @@ export const DataStore = {
       } else {
         allRecords.push(newRec);
       }
+      recordsToPersist.push(newRec);
 
       if (r.status === 'PRESENT' || r.status === 'LATE') present++;
       if (r.status === 'ABSENT') absent++;
@@ -445,7 +718,12 @@ export const DataStore = {
       sessions[sessionIdx].totalAbsent = absent;
       sessions[sessionIdx].totalMembers = records.length;
       setItem(STORAGE_KEYS.ATTENDANCE_SESSIONS, sessions);
+      // Persist session counts to Supabase
+      SupabaseDbService.upsertAttendanceSession(sessions[sessionIdx]);
     }
+
+    // Persist records to Supabase
+    SupabaseDbService.upsertAttendanceRecords(recordsToPersist);
 
     this.addAuditLog(userContext, 'LEADER', 'RECORD_ATTENDANCE', 'AttendanceSession', sessionId, `Recorded attendance for ${records.length} members`);
   },
@@ -476,6 +754,8 @@ export const DataStore = {
     };
     followUps.unshift(newFollowUp);
     setItem(STORAGE_KEYS.FOLLOW_UPS, followUps);
+    // Persist to Supabase
+    SupabaseDbService.upsertFollowUp(newFollowUp);
     return newFollowUp;
   },
   addFollowUpNote(followUpId: string, note: string, authorName: string, contactMethod: any) {
@@ -491,6 +771,8 @@ export const DataStore = {
       });
       followUps[idx].status = 'CONTACTED';
       setItem(STORAGE_KEYS.FOLLOW_UPS, followUps);
+      // Persist to Supabase
+      SupabaseDbService.upsertFollowUp(followUps[idx]);
     }
   },
 
@@ -524,6 +806,8 @@ export const DataStore = {
       events.push(updated);
     }
     setItem(STORAGE_KEYS.EVENTS, events);
+    // Persist to Supabase
+    SupabaseDbService.upsertEvent(updated);
     this.addAuditLog(userContext, 'LEADER', 'SAVE_EVENT', 'Event', updated.id, `Saved event '${updated.title}'`);
     return updated;
   },
@@ -548,6 +832,8 @@ export const DataStore = {
     };
     assignments.push(newAssignment);
     setItem(STORAGE_KEYS.ASSIGNMENTS, assignments);
+    // Persist to Supabase
+    SupabaseDbService.upsertAssignment(newAssignment);
     return newAssignment;
   },
   updateAssignmentStatus(id: string, status: any, notes?: string) {
@@ -557,6 +843,8 @@ export const DataStore = {
       assignments[idx].status = status;
       if (notes) assignments[idx].notes = notes;
       setItem(STORAGE_KEYS.ASSIGNMENTS, assignments);
+      // Persist to Supabase
+      SupabaseDbService.upsertAssignment(assignments[idx]);
     }
   },
 
@@ -577,6 +865,8 @@ export const DataStore = {
     };
     songs.push(newSong);
     setItem(STORAGE_KEYS.SONGS, songs);
+    // Persist to Supabase
+    SupabaseDbService.upsertSong(newSong);
     return newSong;
   },
 
@@ -598,6 +888,8 @@ export const DataStore = {
     };
     logs.unshift(log);
     setItem(STORAGE_KEYS.AUDIT_LOGS, logs.slice(0, 200));
+    // Persist to Supabase
+    SupabaseDbService.upsertAuditLog(log);
   },
 
   // --- ANNOUNCEMENTS ---
@@ -616,6 +908,8 @@ export const DataStore = {
     };
     anns.unshift(newAnn);
     setItem(STORAGE_KEYS.ANNOUNCEMENTS, anns);
+    // Persist to Supabase
+    SupabaseDbService.upsertAnnouncement(newAnn);
     return newAnn;
   }
 };

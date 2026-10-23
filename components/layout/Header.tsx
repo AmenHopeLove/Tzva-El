@@ -11,9 +11,11 @@ import {
   LogOut,
   UserCheck,
   Menu,
-  User
+  User,
+  Database
 } from 'lucide-react';
 import { AccountModal } from '../auth/AccountModal';
+import { DatabaseSyncModal } from '../admin/DatabaseSyncModal';
 
 interface HeaderProps {
   onOpenAI: () => void;
@@ -25,6 +27,7 @@ export function Header({ onOpenAI, onSearch, onToggleMobileMenu }: HeaderProps) 
   const { currentUser, currentRole, setRole, activeChoirId, setActiveChoirId, availableChoirs, allChoirs, logout } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [showAccountModal, setShowAccountModal] = useState(false);
+  const [showDbModal, setShowDbModal] = useState(false);
 
   const roles: { key: SystemRole; label: string }[] = [
     { key: 'SUPER_ADMIN', label: 'Super Admin' },
@@ -135,6 +138,16 @@ export function Header({ onOpenAI, onSearch, onToggleMobileMenu }: HeaderProps) 
             </select>
           </div>
 
+          {/* Supabase Cloud Database Status & Sync */}
+          <button
+            onClick={() => setShowDbModal(true)}
+            title="Supabase Cloud Database Status & Sync"
+            className="flex items-center shrink-0 gap-1.5 bg-[#0d1322] hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/50 rounded-full px-3 py-1 text-xs transition-all text-slate-300 hover:text-white group"
+          >
+            <Database className="w-3.5 h-3.5 text-emerald-400 group-hover:animate-pulse" />
+            <span className="font-semibold text-[11px]">Database</span>
+          </button>
+
           {/* User Account & Security Settings */}
           <button
             onClick={() => setShowAccountModal(true)}
@@ -166,6 +179,12 @@ export function Header({ onOpenAI, onSearch, onToggleMobileMenu }: HeaderProps) 
       <AccountModal
         isOpen={showAccountModal}
         onClose={() => setShowAccountModal(false)}
+      />
+
+      {/* Supabase Cloud Database Status & Sync Modal */}
+      <DatabaseSyncModal
+        isOpen={showDbModal}
+        onClose={() => setShowDbModal(false)}
       />
     </header>
   );

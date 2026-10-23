@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../lib/context/AuthContext';
 import { DataStore } from '../../lib/services/store';
 import { Member, VocalPart, SkillLevel } from '../../lib/types';
@@ -12,16 +12,18 @@ import {
   Mail,
   X,
   SlidersHorizontal,
-  ShieldAlert
+  ShieldAlert,
+  RotateCw
 } from 'lucide-react';
 
 export function MemberManagement() {
-  const { activeChoirId, activeChoir, allChoirs, hasPermission } = useAuth();
-  const [members, setMembers] = useState<Member[]>(() => DataStore.getMembers(activeChoirId));
+  const { activeChoirId, setActiveChoirId, activeChoir, allChoirs, hasPermission } = useAuth();
+  const [members, setMembers] = useState<Member[]>(() => DataStore.getMembers());
   const [searchTerm, setSearchTerm] = useState('');
   const [vocalFilter, setVocalFilter] = useState<string>('ALL');
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Form State
   const [fullName, setFullName] = useState('');
@@ -32,9 +34,28 @@ export function MemberManagement() {
   const [instrument, setInstrument] = useState('None');
   const [skillLevel, setSkillLevel] = useState<SkillLevel>('Intermediate');
 
-  const refreshList = () => {
-    setMembers(DataStore.getMembers(activeChoirId));
-  };
+  const refreshList = useCallback(() => {
+    // Always load all members from DataStore so filtering works across all choirs or selected choir
+    setMembers(DataStore.getMembers());
+  }, []);
+
+  // Refresh members whenever activeChoirId changes
+  useEffect(() => {
+    refreshList();
+  }, [refreshList, activeChoirId]);
+
+  // Synchronize across tabs and listen for local data updates
+  useEffect(() => {
+    const handleUpdate = () => {
+      refreshList();
+    };
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('worship_data_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('worship_data_updated', handleUpdate);
+    };
+  }, [refreshList]);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,19 +96,35 @@ export function MemberManagement() {
             Choir Member Directory ({filteredMembers.length})
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            {activeChoir ? activeChoir.name : 'Showing members across all 7 worship choirs'}
+            {activeChoir ? activeChoir.name : `Showing members across all ${allChoirs.length} worship choirs`}
           </p>
         </div>
 
-        {hasPermission('members.create') && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white font-extrabold text-xs px-5 py-2.5 rounded-full shadow-lg shadow-orange-500/25 transition-all"
+            type="button"
+            onClick={() => {
+              setIsRefreshing(true);
+              refreshList();
+              setTimeout(() => setIsRefreshing(false), 500);
+            }}
+            title="Refresh Member List"
+            className="flex items-center gap-1.5 bg-[#0f172a] hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white px-3 py-2 rounded-full text-xs font-semibold transition-all"
           >
-            <Plus className="w-4 h-4" />
-            <span>Add New Member</span>
+            <RotateCw className={`w-3.5 h-3.5 text-orange-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
           </button>
-        )}
+
+          {hasPermission('members.create') && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-2 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white font-extrabold text-xs px-5 py-2.5 rounded-full shadow-lg shadow-orange-500/25 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add New Member</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filters Toolbar */}
@@ -122,58 +159,110 @@ export function MemberManagement() {
       </div>
 
       {/* Member Grid View */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredMembers.map((member) => (
-          <div
-            key={member.id}
-            onClick={() => setSelectedMember(member)}
-            className="bg-[#0b1120] border border-slate-800 hover:border-orange-500/50 rounded-xl p-4 transition-all cursor-pointer shadow-sm space-y-3"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-orange-600/20 text-orange-400 font-extrabold text-sm flex items-center justify-center border border-orange-500/30">
-                  {member.fullName.charAt(0)}
+      {filteredMembers.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredMembers.map((member) => (
+            <div
+              key={member.id}
+              onClick={() => setSelectedMember(member)}
+              className="bg-[#0b1120] border border-slate-800 hover:border-orange-500/50 rounded-xl p-4 transition-all cursor-pointer shadow-sm space-y-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-orange-600/20 text-orange-400 font-extrabold text-sm flex items-center justify-center border border-orange-500/30">
+                    {member.fullName.charAt(0)}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-100">{member.fullName}</h3>
+                    <p className="text-[11px] text-slate-400">{member.choirName}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold text-sm text-slate-100">{member.fullName}</h3>
-                  <p className="text-[11px] text-slate-400">{member.choirName}</p>
+
+                {member.consecutiveAbsences >= 3 && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1">
+                    <ShieldAlert className="w-3 h-3" /> Flagged ({member.consecutiveAbsences} Abs)
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="bg-orange-500/10 text-orange-400 px-2 py-0.5 rounded-md font-semibold border border-orange-500/20">
+                  Voice: {member.vocalPart}
+                </span>
+                {member.instrument && member.instrument !== 'None' && (
+                  <span className="bg-amber-500/10 text-amber-300 px-2 py-0.5 rounded-md font-semibold border border-amber-500/20">
+                    Inst: {member.instrument}
+                  </span>
+                )}
+                <span className="bg-emerald-500/10 text-emerald-300 px-2 py-0.5 rounded-md font-semibold border border-emerald-500/20">
+                  Skill: {member.skillLevel}
+                </span>
+              </div>
+
+              <div className="border-t border-slate-800/80 pt-2 text-[11px] text-slate-400 space-y-1">
+                <div className="flex items-center gap-2">
+                  <Phone className="w-3.5 h-3.5 text-slate-500" />
+                  <span>{member.phone}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Mail className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="truncate">{member.email}</span>
                 </div>
               </div>
-
-              {member.consecutiveAbsences >= 3 && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1">
-                  <ShieldAlert className="w-3 h-3" /> Flagged ({member.consecutiveAbsences} Abs)
-                </span>
-              )}
             </div>
-
-            <div className="flex flex-wrap items-center gap-2 text-[11px]">
-              <span className="bg-orange-500/10 text-orange-400 px-2 py-0.5 rounded-md font-semibold border border-orange-500/20">
-                Voice: {member.vocalPart}
-              </span>
-              {member.instrument && member.instrument !== 'None' && (
-                <span className="bg-amber-500/10 text-amber-300 px-2 py-0.5 rounded-md font-semibold border border-amber-500/20">
-                  Inst: {member.instrument}
-                </span>
-              )}
-              <span className="bg-emerald-500/10 text-emerald-300 px-2 py-0.5 rounded-md font-semibold border border-emerald-500/20">
-                Skill: {member.skillLevel}
-              </span>
-            </div>
-
-            <div className="border-t border-slate-800/80 pt-2 text-[11px] text-slate-400 space-y-1">
-              <div className="flex items-center gap-2">
-                <Phone className="w-3.5 h-3.5 text-slate-500" />
-                <span>{member.phone}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 text-slate-500" />
-                <span className="truncate">{member.email}</span>
-              </div>
-            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-[#0b1120] border border-slate-800 rounded-2xl p-10 text-center space-y-4">
+          <div className="w-14 h-14 bg-orange-500/10 text-orange-400 rounded-full flex items-center justify-center mx-auto border border-orange-500/20">
+            <Users className="w-7 h-7" />
           </div>
-        ))}
-      </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-white">No Choir Members Found</h3>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
+              {members.length > 0
+                ? `There are ${members.length} registered member(s) in other choirs or matching different filters.`
+                : 'No choir members are currently registered in the database.'}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            {activeChoirId !== 'ALL' && members.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveChoirId('ALL');
+                  setSearchTerm('');
+                  setVocalFilter('ALL');
+                }}
+                className="px-4 py-2 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 text-white rounded-full font-bold text-xs shadow-md shadow-orange-500/20 transition-all"
+              >
+                View All Choirs ({members.length} Registered Members)
+              </button>
+            )}
+            {(searchTerm || vocalFilter !== 'ALL') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm('');
+                  setVocalFilter('ALL');
+                }}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-full font-bold text-xs transition-all"
+              >
+                Reset Search Filters
+              </button>
+            )}
+            {hasPermission('members.create') && (
+              <button
+                type="button"
+                onClick={() => setShowAddModal(true)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-full font-bold text-xs border border-amber-500/30 transition-all"
+              >
+                Add Member Manually
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Member Profile Drawer */}
       {selectedMember && (

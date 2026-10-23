@@ -36,6 +36,18 @@ export function AttendanceModule() {
     loadSessions();
   }, [activeChoirId]);
 
+  useEffect(() => {
+    const handleUpdate = () => {
+      loadSessions();
+    };
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('worship_data_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('worship_data_updated', handleUpdate);
+    };
+  }, [activeChoirId]);
+
   const loadSessions = () => {
     const list = DataStore.getAttendanceSessions(activeChoirId);
     setSessions(list);

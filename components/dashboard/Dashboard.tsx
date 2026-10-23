@@ -21,6 +21,17 @@ interface DashboardProps {
 
 export function Dashboard({ onNavigate }: DashboardProps) {
   const { activeChoirId, activeChoir, allChoirs } = useAuth();
+  const [, setTick] = React.useState(0);
+
+  React.useEffect(() => {
+    const handleUpdate = () => setTick((t) => t + 1);
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('worship_data_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('worship_data_updated', handleUpdate);
+    };
+  }, []);
 
   const members = DataStore.getMembers(activeChoirId);
   const totalMembers = members.length;

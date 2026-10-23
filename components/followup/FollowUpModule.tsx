@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../lib/context/AuthContext';
 import { DataStore } from '../../lib/services/store';
 import { FollowUp, FollowUpStatus, FollowUpPriority } from '../../lib/types';
@@ -23,9 +23,25 @@ export function FollowUpModule() {
   const [noteText, setNoteText] = useState('');
   const [contactMethod, setContactMethod] = useState<'Phone Call' | 'WhatsApp' | 'In-Person' | 'Email'>('Phone Call');
 
-  const refreshList = () => {
+  const refreshList = useCallback(() => {
     setFollowUps(DataStore.getFollowUps(activeChoirId));
-  };
+  }, [activeChoirId]);
+
+  useEffect(() => {
+    refreshList();
+  }, [refreshList, activeChoirId]);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      refreshList();
+    };
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('worship_data_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('worship_data_updated', handleUpdate);
+    };
+  }, [refreshList]);
 
   const handleAddNote = (e: React.FormEvent) => {
     e.preventDefault();

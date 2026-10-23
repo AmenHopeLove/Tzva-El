@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../lib/context/AuthContext';
 import { DataStore } from '../../lib/services/store';
 import { User, SystemRole } from '../../lib/types';
@@ -31,6 +31,18 @@ export function UserManagement() {
   const refreshUserList = () => {
     setUsers(DataStore.getUsers());
   };
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      refreshUserList();
+    };
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('worship_data_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('worship_data_updated', handleUpdate);
+    };
+  }, []);
 
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
