@@ -12,12 +12,14 @@ import {
   CheckCircle2,
   Lock,
   Mail,
-  Plus
+  Plus,
+  RotateCw
 } from 'lucide-react';
 
 export function UserManagement() {
   const { allChoirs, currentRole, refreshData } = useAuth();
   const [users, setUsers] = useState<User[]>(() => DataStore.getUsers());
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Form State
   const [fullName, setFullName] = useState('');
@@ -30,6 +32,16 @@ export function UserManagement() {
 
   const refreshUserList = () => {
     setUsers(DataStore.getUsers());
+  };
+
+  const handleSyncCloud = async () => {
+    setIsSyncing(true);
+    try {
+      await DataStore.syncFromSupabase();
+      refreshUserList();
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   useEffect(() => {
@@ -82,13 +94,23 @@ export function UserManagement() {
         </div>
 
         {currentRole === 'SUPER_ADMIN' && (
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 text-white font-extrabold text-xs px-5 py-2.5 rounded-full shadow-lg shadow-orange-500/25 transition-all"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>Create New User Account</span>
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSyncCloud}
+              disabled={isSyncing}
+              className="flex items-center gap-2 bg-[#0f172a] hover:bg-slate-800 text-slate-200 border border-slate-700 hover:border-emerald-500/50 font-bold text-xs px-4 py-2.5 rounded-full transition-all shadow-sm"
+            >
+              <RotateCw className={`w-3.5 h-3.5 text-emerald-400 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Syncing...' : 'Sync Cloud Accounts'}</span>
+            </button>
+            <button
+              onClick={() => setShowModal(true)}
+              className="flex items-center gap-2 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 text-white font-extrabold text-xs px-5 py-2.5 rounded-full shadow-lg shadow-orange-500/25 transition-all"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Create New User Account</span>
+            </button>
+          </div>
         )}
       </div>
 

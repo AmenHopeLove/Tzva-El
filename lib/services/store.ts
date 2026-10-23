@@ -147,12 +147,19 @@ export const DataStore = {
       // 1. RECONCILE MEMBERS (Two-Way Merge & Cloud Backfill)
       const localMembers = getItem<Member[]>(STORAGE_KEYS.MEMBERS, []);
       const memberMap = new Map<string, Member>();
+      const memberEmails = new Set<string>();
+
       if (sbMembers && sbMembers.length > 0) {
-        sbMembers.forEach((m) => memberMap.set(m.id, m));
+        sbMembers.forEach((m) => {
+          memberMap.set(m.id, m);
+          if (m.email) memberEmails.add(m.email.toLowerCase());
+        });
       }
       localMembers.forEach((lm) => {
-        if (!memberMap.has(lm.id)) {
+        const emailKey = lm.email ? lm.email.toLowerCase() : null;
+        if (!memberMap.has(lm.id) && (!emailKey || !memberEmails.has(emailKey))) {
           memberMap.set(lm.id, lm);
+          if (emailKey) memberEmails.add(emailKey);
           // Upload local member to Supabase cloud so all other accounts see it
           SupabaseDbService.upsertMember(lm);
         }
@@ -164,12 +171,19 @@ export const DataStore = {
       // 2. RECONCILE USERS (Two-Way Merge & Cloud Backfill)
       const localUsers = getItem<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
       const userMap = new Map<string, User>();
+      const userEmails = new Set<string>();
+
       if (sbUsers && sbUsers.length > 0) {
-        sbUsers.forEach((u) => userMap.set(u.id, u));
+        sbUsers.forEach((u) => {
+          userMap.set(u.id, u);
+          if (u.email) userEmails.add(u.email.toLowerCase());
+        });
       }
       localUsers.forEach((lu) => {
-        if (!userMap.has(lu.id)) {
+        const emailKey = lu.email ? lu.email.toLowerCase() : null;
+        if (!userMap.has(lu.id) && (!emailKey || !userEmails.has(emailKey))) {
           userMap.set(lu.id, lu);
+          if (emailKey) userEmails.add(emailKey);
           SupabaseDbService.upsertUser(lu);
         }
       });
