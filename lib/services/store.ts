@@ -23,6 +23,7 @@ import {
   SystemRole,
   AppNotification,
   VocalPart,
+  MemberStatus,
   PrayerRequest
 } from '../types';
 
@@ -335,6 +336,7 @@ export const DataStore = {
     const users = this.getUsers();
     const newUser: User = {
       id: `usr-${Date.now()}`,
+      status: user.status || 'ACTIVE',
       ...user
     };
     users.push(newUser);
@@ -352,9 +354,10 @@ export const DataStore = {
             fullName: newUser.fullName,
             email: newUser.email,
             phone: newUser.phone || '',
+            birthday: newUser.birthday || '',
             primaryChoirId: newUser.primaryChoirId || 'choir-1',
             vocalPart: 'Tenor',
-            status: 'ACTIVE'
+            status: (newUser.status as any) || 'ACTIVE'
           }, userContext);
         }
       } catch (e) {
@@ -365,12 +368,58 @@ export const DataStore = {
     this.addAuditLog(userContext, 'SUPER_ADMIN', 'CREATE_USER_ACCOUNT', 'User', newUser.id, `Created account for '${newUser.fullName}' (${newUser.role}) assigned to choir '${newUser.primaryChoirId}'`);
     return newUser;
   },
-  authenticateUser(usernameOrEmail: string, pass: string): User | null {
+
+  deleteUser(userId: string, userContext = 'Super Admin') {
+    const users = this.getUsers().filter((u) => u.id !== userId);
+    setItem(STORAGE_KEYS.USERS, users);
+    this.addAuditLog(userContext, 'SUPER_ADMIN', 'DELETE_USER', 'User', userId, `Deleted user account ${userId}`);
+  },
+
+  authenticateUser(usernameOrEmailOrPhone: string, pass: string): { user: User | null; error?: string } {
     const users = this.getUsers();
-    const found = users.find(
-      (u) => (u.email.toLowerCase() === usernameOrEmail.toLowerCase() || u.username?.toLowerCase() === usernameOrEmail.toLowerCase()) && u.password === pass
-    );
-    return found || null;
+    const query = usernameOrEmailOrPhone.trim().toLowerCase();
+    const queryDigits = query.replace(/\D/g, '');
+
+    const found = users.find((u) => {
+      if (u.email && u.email.toLowerCase() === query) return true;
+      if (u.username && u.username.toLowerCase() === query) return true;
+      if (u.phone && u.phone.trim().toLowerCase() === query) return true;
+      if (queryDigits.length >= 7 && u.phone) {
+        const userDigits = u.phone.replace(/\D/g, '');
+        if (userDigits === queryDigits || userDigits.endsWith(queryDigits) || queryDigits.endsWith(userDigits)) {
+          return true;
+        }
+      }
+      return false;
+    });
+
+    if (!found || found.password !== pass) {
+      return { user: null, error: 'Invalid username, phone number, or password. Please verify your credentials or contact your administrator.' };
+    }
+
+    // Role / Registration Status Gates
+    if (found.status === 'PENDING_APPROVAL') {
+      return {
+        user: null,
+        error: 'Your registration is currently pending approval by your Choir Leader. You will receive full access once approved.'
+      };
+    }
+
+    if (found.status === 'DENIED') {
+      return {
+        user: null,
+        error: 'Your membership registration was not approved. Please contact your Choir Leader or Church Administrator for assistance.'
+      };
+    }
+
+    if (found.status === 'INACTIVE') {
+      return {
+        user: null,
+        error: 'Your account is currently inactive. Please contact your Church Administrator.'
+      };
+    }
+
+    return { user: found };
   },
 
   signUpUser(data: {
@@ -379,10 +428,11 @@ export const DataStore = {
     username?: string;
     password: string;
     phone?: string;
+    birthday?: string;
     primaryChoirId?: string;
     role?: SystemRole;
     vocalPart?: VocalPart;
-  }): { success: boolean; user?: User; error?: string } {
+  }): { success: boolean; user?: User; error?: string; pendingApproval?: boolean } {
     const users = this.getUsers();
     const trimmedEmail = data.email.trim().toLowerCase();
     const trimmedUsername = (data.username || trimmedEmail.split('@')[0]).trim().toLowerCase();
@@ -407,6 +457,8 @@ export const DataStore = {
       username: trimmedUsername,
       password: data.password,
       phone: data.phone?.trim() || '',
+      birthday: data.birthday?.trim() || '',
+      status: 'PENDING_APPROVAL',
       role: assignedRole,
       assignedChoirIds: [assignedChoir],
       primaryChoirId: assignedChoir
@@ -418,7 +470,7 @@ export const DataStore = {
     // Persist to Supabase
     SupabaseDbService.upsertUser(newUser);
 
-    // Auto-provision choir member record
+    // Auto-provision choir member record with PENDING_APPROVAL status
     try {
       const members = this.getMembers();
       if (!members.some((m) => m.email.toLowerCase() === trimmedEmail)) {
@@ -426,18 +478,121 @@ export const DataStore = {
           fullName: newUser.fullName,
           email: newUser.email,
           phone: newUser.phone,
+          birthday: newUser.birthday,
           primaryChoirId: assignedChoir,
           role: 'Member' as any,
           vocalPart: data.vocalPart || 'Soprano',
-          status: 'ACTIVE'
+          status: 'PENDING_APPROVAL'
         }, 'Registration');
       }
     } catch (e) {
       console.warn('Auto member provisioning note:', e);
     }
 
-    this.addAuditLog(newUser.fullName, assignedRole, 'SIGN_UP', 'User', newUser.id, `User signed up account with choir '${assignedChoir}'`);
-    return { success: true, user: newUser };
+    this.addAuditLog(
+      newUser.fullName,
+      assignedRole,
+      'SIGN_UP_REQUEST',
+      'User',
+      newUser.id,
+      `New member registered with choir '${assignedChoir}' awaiting Choir Leader approval`
+    );
+    return { success: true, user: newUser, pendingApproval: true };
+  },
+
+  approveMemberRequest(
+    memberIdOrEmail: string,
+    approvedBy = 'Choir Leader'
+  ): { success: boolean; member?: Member; error?: string } {
+    const members = this.getMembers();
+    const users = this.getUsers();
+
+    const memberIdx = members.findIndex(
+      (m) =>
+        m.id === memberIdOrEmail ||
+        m.userId === memberIdOrEmail ||
+        (m.email && m.email.toLowerCase() === memberIdOrEmail.toLowerCase())
+    );
+
+    if (memberIdx === -1) {
+      return { success: false, error: 'Registration record not found.' };
+    }
+
+    const member = { ...members[memberIdx], status: 'ACTIVE' as MemberStatus };
+    members[memberIdx] = member;
+    setItem(STORAGE_KEYS.MEMBERS, members);
+    SupabaseDbService.upsertMember(member);
+
+    // Also activate corresponding user account if exists
+    const userIdx = users.findIndex(
+      (u) =>
+        (member.userId && u.id === member.userId) ||
+        (member.email && u.email.toLowerCase() === member.email.toLowerCase())
+    );
+    if (userIdx !== -1) {
+      const updatedUser: User = { ...users[userIdx], status: 'ACTIVE' };
+      users[userIdx] = updatedUser;
+      setItem(STORAGE_KEYS.USERS, users);
+      SupabaseDbService.upsertUser(updatedUser);
+    }
+
+    this.addAuditLog(
+      approvedBy,
+      'CHOIR_LEADER',
+      'APPROVE_MEMBER',
+      'Member',
+      member.id,
+      `Approved membership registration for '${member.fullName}' in choir '${member.choirName || member.primaryChoirId}'`
+    );
+    return { success: true, member };
+  },
+
+  denyMemberRequest(
+    memberIdOrEmail: string,
+    reason?: string,
+    deniedBy = 'Choir Leader'
+  ): { success: boolean; member?: Member; error?: string } {
+    const members = this.getMembers();
+    const users = this.getUsers();
+
+    const memberIdx = members.findIndex(
+      (m) =>
+        m.id === memberIdOrEmail ||
+        m.userId === memberIdOrEmail ||
+        (m.email && m.email.toLowerCase() === memberIdOrEmail.toLowerCase())
+    );
+
+    if (memberIdx === -1) {
+      return { success: false, error: 'Registration record not found.' };
+    }
+
+    const member = { ...members[memberIdx], status: 'DENIED' as MemberStatus };
+    members[memberIdx] = member;
+    setItem(STORAGE_KEYS.MEMBERS, members);
+    SupabaseDbService.upsertMember(member);
+
+    // Also update corresponding user account if exists
+    const userIdx = users.findIndex(
+      (u) =>
+        (member.userId && u.id === member.userId) ||
+        (member.email && u.email.toLowerCase() === member.email.toLowerCase())
+    );
+    if (userIdx !== -1) {
+      const updatedUser: User = { ...users[userIdx], status: 'DENIED' };
+      users[userIdx] = updatedUser;
+      setItem(STORAGE_KEYS.USERS, users);
+      SupabaseDbService.upsertUser(updatedUser);
+    }
+
+    this.addAuditLog(
+      deniedBy,
+      'CHOIR_LEADER',
+      'DENY_MEMBER',
+      'Member',
+      member.id,
+      `Denied membership registration for '${member.fullName}'. Reason: ${reason || 'Denied by leader'}`
+    );
+    return { success: true, member };
   },
 
   verifyResetAccount(usernameOrEmail: string): { success: boolean; user?: User; error?: string } {
@@ -560,6 +715,24 @@ export const DataStore = {
   deleteChoir(id: string, userContext = 'Super Admin') {
     const choirs = this.getChoirs().filter((c) => c.id !== id);
     setItem(STORAGE_KEYS.CHOIRS, choirs);
+    
+    // Reassign any members assigned to this deleted choir to the fallback choir
+    const fallbackChoirId = choirs[0]?.id || 'choir-1';
+    const fallbackChoirName = choirs[0]?.name || 'Primary Choir';
+    const members = this.getMembers();
+    let membersUpdated = false;
+    members.forEach((m) => {
+      if (m.primaryChoirId === id) {
+        m.primaryChoirId = fallbackChoirId;
+        m.choirName = fallbackChoirName;
+        membersUpdated = true;
+        SupabaseDbService.upsertMember(m);
+      }
+    });
+    if (membersUpdated) {
+      setItem(STORAGE_KEYS.MEMBERS, members);
+    }
+
     // Persist to Supabase
     SupabaseDbService.deleteChoir(id);
     this.addAuditLog(userContext, 'SUPER_ADMIN', 'DELETE_CHOIR', 'Choir', id, `Deleted choir ${id}`);

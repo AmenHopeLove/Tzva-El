@@ -144,34 +144,16 @@ export function Header({ onOpenAI, onSearch, onToggleMobileMenu }: HeaderProps) 
             <span>Worship AI</span>
           </button>
 
-          {/* Role Display / Preview Switcher (ONLY Super Admin accounts can preview roles) */}
-          {currentUser?.role === 'SUPER_ADMIN' ? (
-            <div
-              className="flex items-center shrink-0 gap-1.5 bg-[#0d1322] border border-orange-500/40 rounded-full px-3 py-1 text-xs shadow-inner"
-              title="Super Admin Role View Switcher (Preview Mode)"
-            >
-              <Shield className="w-3.5 h-3.5 text-orange-400" />
-              <span className="text-[10px] text-slate-400 font-medium hidden sm:inline">Preview:</span>
-              <select
-                value={currentRole}
-                onChange={(e) => setRole(e.target.value as SystemRole)}
-                className="bg-transparent text-orange-400 font-bold border-none outline-none cursor-pointer text-xs"
-              >
-                {roles.map((r) => (
-                  <option key={r.key} value={r.key} className="bg-[#0b1120] text-white">
-                    {r.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <div className="flex items-center shrink-0 gap-1.5 bg-[#0d1322] border border-slate-800 rounded-full px-3 py-1 text-xs text-slate-300">
-              <Shield className="w-3.5 h-3.5 text-slate-400" />
-              <span className="font-semibold text-xs text-slate-200">
-                {roles.find((r) => r.key === currentUser?.role)?.label || currentUser?.role || 'Member'}
-              </span>
-            </div>
-          )}
+          {/* Authentic Role Display Badge (Strict RBAC - Preview Switcher removed per admin security) */}
+          <div
+            className="flex items-center shrink-0 gap-1.5 bg-[#0d1322] border border-orange-500/30 rounded-full px-3 py-1 text-xs text-slate-200"
+            title={`Logged in as ${roles.find((r) => r.key === currentUser?.role)?.label || currentUser?.role || 'Member'}`}
+          >
+            <Shield className="w-3.5 h-3.5 text-orange-400" />
+            <span className="font-bold text-xs text-orange-300">
+              {roles.find((r) => r.key === currentUser?.role)?.label || currentUser?.role || 'Member'}
+            </span>
+          </div>
 
           {/* Supabase Cloud Database Status & Sync (Super Admin ONLY) */}
           {currentUser?.role === 'SUPER_ADMIN' && (

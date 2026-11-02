@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS public.users (
     full_name TEXT NOT NULL,
     avatar_url TEXT,
     phone TEXT,
+    birthday TEXT,
+    status TEXT DEFAULT 'ACTIVE',
     role TEXT DEFAULT 'MEMBER',
     assigned_choir_ids TEXT[] DEFAULT '{}',
     primary_choir_id TEXT,
@@ -58,6 +60,10 @@ CREATE TABLE IF NOT EXISTS public.users (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Idempotent schema upgrades for existing installations
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS birthday TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'ACTIVE';
 
 -- ----------------------------------------------------------------------------
 -- 4. MEMBERS (CHOIR MEMBERS DIRECTORY)

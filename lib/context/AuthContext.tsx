@@ -18,17 +18,18 @@ interface AuthContextType {
   activeChoir?: Choir;
   availableChoirs: Choir[]; // Filtered list of choirs user is allowed to access
   allChoirs: Choir[];
-  login: (usernameOrEmail: string, pass: string) => boolean | Promise<boolean>;
+  login: (usernameOrEmailOrPhone: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (data: {
     fullName: string;
     email: string;
     username?: string;
     password: string;
     phone?: string;
+    birthday?: string;
     primaryChoirId?: string;
     role?: SystemRole;
     vocalPart?: VocalPart;
-  }) => { success: boolean; user?: User; error?: string };
+  }) => { success: boolean; user?: User; error?: string; pendingApproval?: boolean };
   verifyResetAccount: (usernameOrEmail: string) => { success: boolean; user?: User; error?: string };
   resetPassword: (usernameOrEmail: string, newPassword: string) => { success: boolean; error?: string };
   changePassword: (oldPassword: string, newPassword: string) => { success: boolean; error?: string };
@@ -181,22 +182,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAllChoirs(DataStore.getChoirs());
   };
 
-  const login = async (usernameOrEmail: string, pass: string): Promise<boolean> => {
-    let user = DataStore.authenticateUser(usernameOrEmail, pass);
+  const login = async (
+    usernameOrEmailOrPhone: string,
+    pass: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    let authRes = DataStore.authenticateUser(usernameOrEmailOrPhone, pass);
+    let user = authRes.user;
+
+    // Check if account status explicitly blocks authentication
+    if (!user && authRes.error && (authRes.error.includes('pending approval') || authRes.error.includes('not approved') || authRes.error.includes('inactive'))) {
+      return { success: false, error: authRes.error };
+    }
 
     // If user is not yet loaded into local cache, query Supabase cloud directly
     if (!user && isSupabaseConfigured()) {
       try {
-        const query = usernameOrEmail.trim().toLowerCase();
+        const query = usernameOrEmailOrPhone.trim().toLowerCase();
+        const queryDigits = query.replace(/\D/g, '');
+        const orClauses = [`email.ilike.${query}`, `username.ilike.${query}`, `phone.ilike.%${query}%`];
+        if (queryDigits.length >= 7) {
+          orClauses.push(`phone.ilike.%${queryDigits}%`);
+        }
+
         const { data } = await supabase
           .from('users')
           .select('*')
-          .or(`email.ilike.${query},username.ilike.${query}`)
+          .or(orClauses.join(','))
           .limit(1);
 
         if (data && data.length > 0) {
           const cloudUser = toCamelCase(data[0]) as User;
           if (cloudUser.password === pass) {
+            // Check cloud account status
+            if (cloudUser.status === 'PENDING_APPROVAL') {
+              return {
+                success: false,
+                error: 'Your registration is currently pending approval by your Choir Leader. You will receive full access once approved.'
+              };
+            }
+            if (cloudUser.status === 'DENIED') {
+              return {
+                success: false,
+                error: 'Your membership registration was not approved. Please contact your Choir Leader or Church Administrator.'
+              };
+            }
+            if (cloudUser.status === 'INACTIVE') {
+              return {
+                success: false,
+                error: 'Your account is currently inactive. Please contact your Church Administrator.'
+              };
+            }
+
             user = cloudUser;
             // Cache locally so subsequent calls are instant
             const localUsers = DataStore.getUsers();
@@ -225,9 +261,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (typeof window !== 'undefined') {
         localStorage.setItem('worship_session_user_id', user.id);
       }
-      return true;
+      return { success: true };
     }
-    return false;
+
+    return {
+      success: false,
+      error: authRes.error || 'Invalid username, phone number, or password. Please verify your credentials or contact your administrator.'
+    };
   };
 
   const signUp = (data: {
@@ -236,12 +276,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     username?: string;
     password: string;
     phone?: string;
+    birthday?: string;
     primaryChoirId?: string;
     role?: SystemRole;
     vocalPart?: VocalPart;
   }) => {
     const res = DataStore.signUpUser(data);
-    if (res.success && res.user) {
+    // If pending approval, DO NOT activate session immediately
+    if (res.success && res.user && !res.pendingApproval) {
       setCurrentUser(res.user);
       setIsAuthenticated(true);
       setCurrentRole(res.user.role);
@@ -249,8 +291,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (typeof window !== 'undefined') {
         localStorage.setItem('worship_session_user_id', res.user.id);
       }
-      refreshData();
     }
+    refreshData();
     return res;
   };
 

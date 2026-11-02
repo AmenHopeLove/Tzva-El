@@ -11,7 +11,11 @@ import {
   Palette,
   CheckCircle2,
   Music,
-  Trash2
+  Trash2,
+  Calendar,
+  Clock,
+  Users,
+  Plus
 } from 'lucide-react';
 
 export function AdminCustomization() {
@@ -25,6 +29,9 @@ export function AdminCustomization() {
   const [newChoirName, setNewChoirName] = useState('');
   const [newChoirCode, setNewChoirCode] = useState('');
   const [newChoirAdmin, setNewChoirAdmin] = useState('');
+  const [newChoirDay, setNewChoirDay] = useState('Thursday');
+  const [newChoirTime, setNewChoirTime] = useState('19:00');
+  const [newChoirDesc, setNewChoirDesc] = useState('');
 
   // New Custom Field Form State
   const [newFieldName, setNewFieldName] = useState('');
@@ -51,11 +58,14 @@ export function AdminCustomization() {
 
   const handleAddChoir = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newChoirName || !newChoirCode) return;
+    if (!newChoirName.trim() || !newChoirCode.trim()) return;
     DataStore.saveChoir({
-      name: newChoirName,
-      code: newChoirCode,
-      adminName: newChoirAdmin || 'Unassigned'
+      name: newChoirName.trim(),
+      code: newChoirCode.trim().toUpperCase(),
+      meetingDay: newChoirDay,
+      meetingTime: newChoirTime,
+      description: newChoirDesc.trim(),
+      adminName: newChoirAdmin.trim() || 'Unassigned'
     });
     setChoirs(DataStore.getChoirs());
     setAuditLogs(DataStore.getAuditLogs());
@@ -63,6 +73,7 @@ export function AdminCustomization() {
     setNewChoirName('');
     setNewChoirCode('');
     setNewChoirAdmin('');
+    setNewChoirDesc('');
   };
 
   const handleDeleteChoir = (id: string) => {
@@ -221,63 +232,143 @@ export function AdminCustomization() {
 
           {/* Choir & Worship Team Management */}
           <div className="bg-[#0b1120] border border-slate-800 rounded-2xl p-5 space-y-4">
-            <h3 className="font-bold text-sm text-white flex items-center gap-2 border-b border-slate-800 pb-2">
-              <Music className="w-4 h-4 text-orange-400" />
-              Choir & Worship Team Management
-            </h3>
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                <Music className="w-4 h-4 text-orange-400" />
+                Choir & Worship Team Management ({choirs.length})
+              </h3>
+              <span className="text-[10px] text-slate-400">Super Admin Only</span>
+            </div>
             <p className="text-xs text-slate-400">
-              Add new worship teams or delete existing ones.
+              Create new worship choirs or delete unnecessary teams. Members from deleted teams will automatically be reassigned safely.
             </p>
 
-            <form onSubmit={handleAddChoir} className="flex flex-col sm:flex-row gap-2 text-xs">
-              <input
-                type="text"
-                required
-                placeholder="Team Name"
-                value={newChoirName}
-                onChange={(e) => setNewChoirName(e.target.value)}
-                className="flex-1 bg-[#0f172a] border border-slate-800 rounded-lg p-2 text-white focus:outline-none"
-              />
-              <input
-                type="text"
-                required
-                placeholder="Code (e.g. AWC-07)"
-                value={newChoirCode}
-                onChange={(e) => setNewChoirCode(e.target.value)}
-                className="w-full sm:w-32 bg-[#0f172a] border border-slate-800 rounded-lg p-2 text-white focus:outline-none"
-              />
-              <input
-                type="text"
-                placeholder="Admin Name"
-                value={newChoirAdmin}
-                onChange={(e) => setNewChoirAdmin(e.target.value)}
-                className="w-full sm:w-32 bg-[#0f172a] border border-slate-800 rounded-lg p-2 text-white focus:outline-none"
-              />
+            <form onSubmit={handleAddChoir} className="bg-[#0f172a] border border-slate-800/80 p-3.5 rounded-xl space-y-3 text-xs">
+              <div className="font-bold text-slate-200 flex items-center gap-2">
+                <Plus className="w-3.5 h-3.5 text-orange-400" />
+                <span>Create New Choir / Team</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Choir Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Youth Praise Choir"
+                    value={newChoirName}
+                    onChange={(e) => setNewChoirName(e.target.value)}
+                    className="w-full bg-[#0b1120] border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Choir Code *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. YPC-08"
+                    value={newChoirCode}
+                    onChange={(e) => setNewChoirCode(e.target.value)}
+                    className="w-full bg-[#0b1120] border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-orange-500 uppercase font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Meeting Day</label>
+                  <select
+                    value={newChoirDay}
+                    onChange={(e) => setNewChoirDay(e.target.value)}
+                    className="w-full bg-[#0b1120] border border-slate-700 rounded-lg p-2 text-white focus:outline-none"
+                  >
+                    <option value="Monday">Monday</option>
+                    <option value="Tuesday">Tuesday</option>
+                    <option value="Wednesday">Wednesday</option>
+                    <option value="Thursday">Thursday</option>
+                    <option value="Friday">Friday</option>
+                    <option value="Saturday">Saturday</option>
+                    <option value="Sunday">Sunday</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Meeting Time</label>
+                  <input
+                    type="time"
+                    value={newChoirTime}
+                    onChange={(e) => setNewChoirTime(e.target.value)}
+                    className="w-full bg-[#0b1120] border border-slate-700 rounded-lg p-2 text-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Choir Leader Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Pastor David"
+                    value={newChoirAdmin}
+                    onChange={(e) => setNewChoirAdmin(e.target.value)}
+                    className="w-full bg-[#0b1120] border border-slate-700 rounded-lg p-2 text-white focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">Description (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Sunday Youth Service Praise and Worship team"
+                  value={newChoirDesc}
+                  onChange={(e) => setNewChoirDesc(e.target.value)}
+                  className="w-full bg-[#0b1120] border border-slate-700 rounded-lg p-2 text-white focus:outline-none"
+                />
+              </div>
+
               <button
                 type="submit"
-                className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3.5 py-2 rounded-lg transition-all"
+                className="w-full bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 text-white font-extrabold py-2 rounded-lg transition-all shadow-md flex items-center justify-center gap-2"
               >
-                Add
+                <Plus className="w-4 h-4" />
+                <span>Save New Choir</span>
               </button>
             </form>
 
-            <div className="space-y-2 pt-2 max-h-[300px] overflow-y-auto pr-1 hide-scrollbar">
-              {choirs.map((choir) => (
-                <div key={choir.id} className="bg-[#0f172a] border border-slate-800/80 p-2.5 rounded-lg flex justify-between items-center text-xs text-slate-200">
-                  <div>
-                    <span className="font-bold text-slate-100">{choir.name}</span>
-                    <span className="ml-2 text-slate-500 text-[10px]">({choir.code})</span>
-                    <div className="text-[10px] text-orange-400 mt-0.5">Admin: {choir.adminName}</div>
-                  </div>
-                  <button
-                    onClick={() => handleDeleteChoir(choir.id)}
-                    className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-md transition-colors"
-                    title="Delete Choir"
+            <div className="space-y-2 pt-2 max-h-[350px] overflow-y-auto pr-1 hide-scrollbar">
+              {choirs.map((choir) => {
+                const choirMembers = DataStore.getMembers(choir.id);
+                return (
+                  <div
+                    key={choir.id}
+                    className="bg-[#0f172a] border border-slate-800/80 p-3 rounded-xl flex justify-between items-center text-xs text-slate-200 hover:border-slate-700 transition-all"
                   >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-100">{choir.name}</span>
+                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                          {choir.code}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 flex items-center gap-3">
+                        <span>Admin: <strong className="text-slate-200">{choir.adminName}</strong></span>
+                        <span>•</span>
+                        <span>{choir.meetingDay} @ {choir.meetingTime}</span>
+                        <span>•</span>
+                        <span className="text-emerald-400 font-semibold">{choirMembers.length} member(s)</span>
+                      </div>
+                      {choir.description && (
+                        <p className="text-[10px] text-slate-500 truncate max-w-sm">{choir.description}</p>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => handleDeleteChoir(choir.id)}
+                      className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors shrink-0 ml-2"
+                      title={`Delete ${choir.name}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

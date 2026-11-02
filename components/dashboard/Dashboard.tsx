@@ -11,7 +11,8 @@ import {
   HeartHandshake,
   UserPlus,
   ArrowUpRight,
-  ShieldAlert
+  ShieldAlert,
+  Clock
 } from 'lucide-react';
 import { NavTab } from '../layout/Navigation';
 
@@ -36,12 +37,13 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const members = DataStore.getMembers(activeChoirId);
   const totalMembers = members.length;
   const activeMembers = members.filter((m) => m.status === 'ACTIVE').length;
+  const pendingRegistrations = members.filter((m) => m.status === 'PENDING_APPROVAL');
 
   const followUps = DataStore.getFollowUps(activeChoirId);
   const pendingFollowUps = followUps.filter((f) => f.status !== 'COMPLETED').length;
 
   // Members flagged for 3+ consecutive absences
-  const flaggedAbsences = members.filter((m) => m.consecutiveAbsences >= 3);
+  const flaggedAbsences = members.filter((m) => m.consecutiveAbsences >= 3 && m.status === 'ACTIVE');
 
   const events = DataStore.getEvents();
 
@@ -82,6 +84,32 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         </div>
       </div>
 
+      {/* Pending Membership Approvals Alert (Visible to leaders with members.view) */}
+      {hasPermission('members.view') && pendingRegistrations.length > 0 && (
+        <div className="bg-amber-950/60 border border-amber-500/40 rounded-xl p-4 text-amber-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg animate-in fade-in">
+          <div className="flex items-start md:items-center gap-3">
+            <div className="p-2 bg-amber-500/20 rounded-lg border border-amber-500/30 text-amber-400">
+              <Clock className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm text-amber-100 flex items-center gap-2">
+                Membership Review: {pendingRegistrations.length} Prospective Member(s) Waiting for Choir Approval
+              </h4>
+              <p className="text-xs text-amber-300 mt-0.5">
+                Applicants: {pendingRegistrations.map((m) => m.fullName).slice(0, 3).join(', ')}
+                {pendingRegistrations.length > 3 ? ` and ${pendingRegistrations.length - 3} others` : ''}. Review and approve access.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigate('members')}
+            className="w-full md:w-auto whitespace-nowrap bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 text-white text-xs font-bold px-4 py-2 md:py-1.5 rounded-full shadow-md transition-all text-center"
+          >
+            Review & Approve ({pendingRegistrations.length})
+          </button>
+        </div>
+      )}
+
       {/* Pastoral Care Absence Alert Banner (Visible only to leaders with followup.view) */}
       {hasPermission('followup.view') && flaggedAbsences.length > 0 && (
         <div className="bg-rose-950/60 border border-rose-500/40 rounded-xl p-4 text-rose-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg">
@@ -110,7 +138,12 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       {/* Executive KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Choirs */}
-        <div className="bg-[#0b1120] border border-slate-800 rounded-xl p-4 text-slate-100 shadow-sm">
+        <div
+          onClick={() => currentUser?.role === 'SUPER_ADMIN' && onNavigate('admin')}
+          className={`bg-[#0b1120] border border-slate-800 rounded-xl p-4 text-slate-100 shadow-sm transition-all ${
+            currentUser?.role === 'SUPER_ADMIN' ? 'cursor-pointer hover:border-orange-500/50' : ''
+          }`}
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-slate-400">Total Choirs</span>
             <div className="p-2 bg-orange-500/10 rounded-lg text-orange-400">
@@ -118,7 +151,12 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             </div>
           </div>
           <div className="mt-2 text-2xl font-bold text-white">{allChoirs.length}</div>
-          <div className="text-[11px] text-orange-400 mt-1 font-semibold">7 Active Choirs in Church</div>
+          <div className="text-[11px] text-orange-400 mt-1 font-semibold flex items-center justify-between">
+            <span>{allChoirs.length} Active Choirs in Church</span>
+            {currentUser?.role === 'SUPER_ADMIN' && (
+              <span className="text-[10px] text-amber-400 underline">Manage Choirs →</span>
+            )}
+          </div>
         </div>
 
         {/* Total Members */}

@@ -42,6 +42,8 @@ export interface User {
   fullName: string;
   avatarUrl?: string;
   phone?: string;
+  birthday?: string;
+  status?: 'ACTIVE' | 'PENDING_APPROVAL' | 'DENIED' | 'INACTIVE';
   role: SystemRole;
   assignedChoirIds: string[]; // Choirs user has access to
   primaryChoirId?: string;
@@ -81,7 +83,7 @@ export interface Department {
 
 export type VocalPart = 'Soprano' | 'Alto' | 'Tenor' | 'Bass' | 'Baritone' | 'Mezzo-Soprano' | 'Lead' | 'None';
 export type SkillLevel = 'Beginner' | 'Intermediate' | 'Advanced' | 'Professional';
-export type MemberStatus = 'ACTIVE' | 'INACTIVE' | 'ON_LEAVE' | 'SUSPENDED';
+export type MemberStatus = 'ACTIVE' | 'INACTIVE' | 'ON_LEAVE' | 'SUSPENDED' | 'PENDING_APPROVAL' | 'DENIED';
 
 export interface CustomFieldValue {
   fieldId: string;

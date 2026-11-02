@@ -18,7 +18,9 @@ import {
   ArrowLeft,
   Sparkles,
   HelpCircle,
-  RefreshCw
+  RefreshCw,
+  Calendar,
+  Clock
 } from 'lucide-react';
 
 type AuthMode = 'login' | 'signup' | 'forgot';
@@ -43,12 +45,21 @@ export function LoginPage() {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupUsername, setSignupUsername] = useState('');
   const [signupPhone, setSignupPhone] = useState('');
+  const [signupBirthday, setSignupBirthday] = useState('');
   const [signupChoirId, setSignupChoirId] = useState(allChoirs[0]?.id || 'choir-1');
   const [signupVocalRole, setSignupVocalRole] = useState('Soprano');
   const [signupPassword, setSignupPassword] = useState('');
   const [signupConfirmPassword, setSignupConfirmPassword] = useState('');
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [agreedToGuidelines, setAgreedToGuidelines] = useState(false);
+  const [registrationPending, setRegistrationPending] = useState<{
+    fullName: string;
+    email: string;
+    phone: string;
+    birthday: string;
+    choirName: string;
+    username: string;
+  } | null>(null);
 
   // Forgot Password State
   const [forgotStep, setForgotStep] = useState<1 | 2>(1);
@@ -84,10 +95,10 @@ export function LoginPage() {
     setIsLoading(true);
 
     try {
-      const ok = await login(loginIdentifier.trim(), loginPassword);
+      const res = await login(loginIdentifier.trim(), loginPassword);
       setIsLoading(false);
-      if (!ok) {
-        setError('Invalid username/email or password. Please verify your credentials or use Forgot Password.');
+      if (!res.success) {
+        setError(res.error || 'Invalid username, phone number, or password. Please verify your credentials.');
       }
     } catch {
       setIsLoading(false);
@@ -102,6 +113,16 @@ export function LoginPage() {
 
     if (!agreedToGuidelines) {
       setError('Please agree to the Worship Ministry guidelines and commitment statement.');
+      return;
+    }
+
+    if (!signupPhone.trim()) {
+      setError('Please provide your phone number for choir leader contact and sign-in.');
+      return;
+    }
+
+    if (!signupBirthday) {
+      setError('Please enter your birthday.');
       return;
     }
 
@@ -123,6 +144,7 @@ export function LoginPage() {
         username: signupUsername || signupEmail.split('@')[0],
         password: signupPassword,
         phone: signupPhone,
+        birthday: signupBirthday,
         primaryChoirId: signupChoirId,
         vocalPart: signupVocalRole as any,
         role: 'MEMBER'
@@ -130,7 +152,16 @@ export function LoginPage() {
       setIsLoading(false);
 
       if (!res.success) {
-        setError(res.error || 'Failed to create account.');
+        setError(res.error || 'Failed to submit registration.');
+      } else if (res.pendingApproval) {
+        setRegistrationPending({
+          fullName: signupFullName,
+          email: signupEmail,
+          phone: signupPhone,
+          birthday: signupBirthday,
+          choirName: allChoirs.find((c) => c.id === signupChoirId)?.name || 'Choir',
+          username: signupUsername || signupEmail.split('@')[0]
+        });
       }
     }, 500);
   };
@@ -221,7 +252,7 @@ export function LoginPage() {
         </div>
 
         {/* Navigation Tabs (Sign In / Sign Up) */}
-        {mode !== 'forgot' && (
+        {!registrationPending && mode !== 'forgot' && (
           <div className="flex bg-[#0f172a] p-1 rounded-2xl border border-slate-800 text-xs font-bold">
             <button
               type="button"
@@ -249,14 +280,14 @@ export function LoginPage() {
         )}
 
         {/* Global Alert Messages */}
-        {error && (
+        {error && !registrationPending && (
           <div className="bg-rose-950/80 border border-rose-500/50 p-3 rounded-2xl text-rose-200 flex items-start gap-2.5 text-xs animate-in fade-in">
             <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
             <span className="leading-relaxed">{error}</span>
           </div>
         )}
 
-        {successMsg && (
+        {successMsg && !registrationPending && (
           <div className="bg-emerald-950/80 border border-emerald-500/50 p-3 rounded-2xl text-emerald-200 flex items-start gap-2.5 text-xs animate-in fade-in">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
             <span className="leading-relaxed">{successMsg}</span>
@@ -264,18 +295,67 @@ export function LoginPage() {
         )}
 
         {/* ==================================================================== */}
+        {/* REGISTRATION UNDER REVIEW NOTICE */}
+        {/* ==================================================================== */}
+        {registrationPending && (
+          <div className="bg-[#0f172a] border border-amber-500/40 rounded-2xl p-6 text-center space-y-4 animate-in fade-in">
+            <div className="w-14 h-14 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto border border-amber-500/30">
+              <Clock className="w-7 h-7 animate-pulse" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-extrabold text-white">Registration Submitted for Review</h3>
+              <p className="text-xs text-amber-300 font-bold uppercase tracking-wider">Awaiting Choir Leader Approval</p>
+            </div>
+            <div className="bg-[#0b1120] border border-slate-800 rounded-xl p-4 text-xs text-left text-slate-300 space-y-2">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Applicant:</span>
+                <span className="font-bold text-white">{registrationPending.fullName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Requested Choir:</span>
+                <span className="text-orange-400 font-semibold">{registrationPending.choirName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Phone:</span>
+                <span className="text-slate-200">{registrationPending.phone}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Birthday:</span>
+                <span className="text-slate-200">{registrationPending.birthday}</span>
+              </div>
+            </div>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
+              Your membership request has been submitted. Your <strong>Choir Leader</strong> will review and approve or deny your request. Once approved, you can sign in directly using your username, phone number, or email and password.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('login');
+                setLoginIdentifier(registrationPending.phone || registrationPending.username || registrationPending.email);
+                setRegistrationPending(null);
+                setError('');
+                setSuccessMsg('Registration submitted! You can sign in once your Choir Leader approves your account.');
+              }}
+              className="w-full bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 text-white font-extrabold py-3 rounded-xl transition-all shadow-md text-xs"
+            >
+              Back to Sign In
+            </button>
+          </div>
+        )}
+
+        {/* ==================================================================== */}
         {/* MODE 1: SIGN IN FORM */}
         {/* ==================================================================== */}
-        {mode === 'login' && (
+        {!registrationPending && mode === 'login' && (
           <form onSubmit={handleLoginSubmit} className="space-y-4 text-xs">
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">Email or Username</label>
+              <label className="block text-slate-300 font-semibold mb-1">Username, Phone Number, or Email</label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                 <input
                   type="text"
                   required
-                  placeholder="e.g. admin or admin@church.org"
+                  placeholder="Enter username, phone (+1...), or email"
                   value={loginIdentifier}
                   onChange={(e) => setLoginIdentifier(e.target.value)}
                   className="w-full bg-[#0f172a] border border-slate-800 rounded-xl pl-10 pr-3 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 transition-all"
@@ -344,28 +424,11 @@ export function LoginPage() {
               )}
             </button>
 
-            {/* Quick Demo Credentials Switcher */}
-            <div className="pt-2 border-t border-slate-800/80">
-              <p className="text-[11px] text-slate-500 mb-2 font-medium text-center">Quick Demo Testing Access:</p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => fillQuickDemo('admin', 'admin123')}
-                  className="bg-[#0f172a] hover:bg-slate-800 border border-slate-800 hover:border-orange-500/40 p-2 rounded-xl text-left transition-all group"
-                >
-                  <p className="text-[11px] font-bold text-orange-400 group-hover:text-amber-300">Super Admin</p>
-                  <p className="text-[10px] text-slate-400">admin / admin123</p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => { setMode('signup'); setError(''); }}
-                  className="bg-[#0f172a] hover:bg-slate-800 border border-slate-800 hover:border-orange-500/40 p-2 rounded-xl text-left transition-all group"
-                >
-                  <p className="text-[11px] font-bold text-slate-300 group-hover:text-white">New Member?</p>
-                  <p className="text-[10px] text-orange-400 underline">Sign Up Account →</p>
-                </button>
-              </div>
+            {/* Credential Access Notice */}
+            <div className="pt-2 border-t border-slate-800/80 text-center">
+              <p className="text-[11px] text-slate-500">
+                Sign in with the username, phone number, or email and password assigned by your church administrator or approved upon registration.
+              </p>
             </div>
           </form>
         )}
@@ -420,11 +483,12 @@ export function LoginPage() {
               </div>
 
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Phone Number</label>
+                <label className="block text-slate-300 font-semibold mb-1">Phone Number *</label>
                 <div className="relative">
                   <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
                     type="tel"
+                    required
                     placeholder="+1 (555) 000-0000"
                     value={signupPhone}
                     onChange={(e) => setSignupPhone(e.target.value)}
@@ -434,8 +498,22 @@ export function LoginPage() {
               </div>
             </div>
 
-            {/* Choir Assignment & Ministry Part */}
+            {/* Birthday / Date of Birth & Assigned Choir */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Birthday / Date of Birth *</label>
+                <div className="relative">
+                  <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="date"
+                    required
+                    value={signupBirthday}
+                    onChange={(e) => setSignupBirthday(e.target.value)}
+                    className="w-full bg-[#0f172a] border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 transition-all text-xs"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">Primary Choir / Team</label>
                 <select
@@ -450,22 +528,23 @@ export function LoginPage() {
                   ))}
                 </select>
               </div>
+            </div>
 
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Vocal Part / Role</label>
-                <select
-                  value={signupVocalRole}
-                  onChange={(e) => setSignupVocalRole(e.target.value)}
-                  className="w-full bg-[#0f172a] border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-orange-500 text-xs"
-                >
-                  <option value="Soprano" className="bg-[#0b1120]">Soprano</option>
-                  <option value="Alto" className="bg-[#0b1120]">Alto</option>
-                  <option value="Tenor" className="bg-[#0b1120]">Tenor</option>
-                  <option value="Bass" className="bg-[#0b1120]">Bass</option>
-                  <option value="Musician" className="bg-[#0b1120]">Musician / Band</option>
-                  <option value="Worship Leader" className="bg-[#0b1120]">Worship Leader</option>
-                </select>
-              </div>
+            {/* Ministry Part */}
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">Vocal Part / Role</label>
+              <select
+                value={signupVocalRole}
+                onChange={(e) => setSignupVocalRole(e.target.value)}
+                className="w-full bg-[#0f172a] border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-orange-500 text-xs"
+              >
+                <option value="Soprano" className="bg-[#0b1120]">Soprano</option>
+                <option value="Alto" className="bg-[#0b1120]">Alto</option>
+                <option value="Tenor" className="bg-[#0b1120]">Tenor</option>
+                <option value="Bass" className="bg-[#0b1120]">Bass</option>
+                <option value="Musician" className="bg-[#0b1120]">Musician / Band</option>
+                <option value="Worship Leader" className="bg-[#0b1120]">Worship Leader</option>
+              </select>
             </div>
 
             {/* Password Fields */}

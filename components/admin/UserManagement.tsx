@@ -13,7 +13,12 @@ import {
   Lock,
   Mail,
   Plus,
-  RotateCw
+  RotateCw,
+  Trash2,
+  XCircle,
+  Clock,
+  Phone,
+  Calendar
 } from 'lucide-react';
 
 export function UserManagement() {
@@ -25,6 +30,8 @@ export function UserManagement() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
+  const [phone, setPhone] = useState('');
+  const [birthday, setBirthday] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<SystemRole>('CHOIR_ADMIN');
   const [assignedChoirId, setAssignedChoirId] = useState('choir-1');
@@ -68,8 +75,11 @@ export function UserManagement() {
       fullName,
       email,
       username: username || email.split('@')[0],
+      phone,
+      birthday,
       password,
       role,
+      status: 'ACTIVE',
       assignedChoirIds: [assignedChoirId],
       primaryChoirId: assignedChoirId
     });
@@ -78,9 +88,30 @@ export function UserManagement() {
     setFullName('');
     setEmail('');
     setUsername('');
+    setPhone('');
+    setBirthday('');
     setPassword('');
     refreshUserList();
     alert(`Account created successfully for ${fullName}!`);
+  };
+
+  const handleApproveUser = (usr: User) => {
+    DataStore.approveMemberRequest(usr.id, currentUser?.fullName || 'Super Admin');
+    refreshUserList();
+  };
+
+  const handleDenyUser = (usr: User) => {
+    if (confirm(`Deny registration for account '${usr.fullName}'?`)) {
+      DataStore.denyMemberRequest(usr.id, 'Denied by Super Admin', currentUser?.fullName || 'Super Admin');
+      refreshUserList();
+    }
+  };
+
+  const handleDeleteUser = (usr: User) => {
+    if (confirm(`Are you sure you want to delete user account '${usr.fullName}' (${usr.email})?`)) {
+      DataStore.deleteUser(usr.id, currentUser?.fullName || 'Super Admin');
+      refreshUserList();
+    }
   };
 
   if (currentUser?.role !== 'SUPER_ADMIN') {
@@ -136,23 +167,57 @@ export function UserManagement() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {users.map((usr) => {
           const assignedChoir = allChoirs.find((c) => c.id === usr.primaryChoirId);
+          const isPending = usr.status === 'PENDING_APPROVAL';
           return (
             <div
               key={usr.id}
-              className="bg-[#0b1120] border border-slate-800 rounded-xl p-4 space-y-3 shadow-sm hover:border-orange-500/50 transition-all"
+              className={`bg-[#0b1120] border rounded-xl p-4 space-y-3 shadow-sm transition-all ${
+                isPending
+                  ? 'border-amber-500/50 bg-gradient-to-b from-amber-950/20 to-[#0b1120]'
+                  : 'border-slate-800 hover:border-orange-500/50'
+              }`}
             >
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-orange-600/20 text-orange-400 font-extrabold text-sm flex items-center justify-center border border-orange-500/30">
+                  <div
+                    className={`w-10 h-10 rounded-full font-extrabold text-sm flex items-center justify-center border ${
+                      isPending
+                        ? 'bg-amber-600/20 text-amber-400 border-amber-500/40'
+                        : 'bg-orange-600/20 text-orange-400 border-orange-500/30'
+                    }`}
+                  >
                     {usr.fullName.charAt(0)}
                   </div>
                   <div>
                     <h3 className="font-bold text-sm text-slate-100">{usr.fullName}</h3>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30">
-                      {usr.role}
-                    </span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                        {usr.role}
+                      </span>
+                      <span
+                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
+                          usr.status === 'ACTIVE' || !usr.status
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            : usr.status === 'PENDING_APPROVAL'
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                            : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                        }`}
+                      >
+                        {usr.status || 'ACTIVE'}
+                      </span>
+                    </div>
                   </div>
                 </div>
+
+                {usr.role !== 'SUPER_ADMIN' && (
+                  <button
+                    onClick={() => handleDeleteUser(usr)}
+                    className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                    title="Delete Account"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
               <div className="bg-[#0f172a] p-3 rounded-lg text-xs space-y-1 text-slate-300 font-mono">
@@ -165,6 +230,16 @@ export function UserManagement() {
                   <span className="text-amber-300 font-bold">{usr.username || 'n/a'}</span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-slate-500">Phone:</span>
+                  <span className="text-slate-200">{usr.phone || 'n/a'}</span>
+                </div>
+                {usr.birthday && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Birthday:</span>
+                    <span className="text-amber-300">{usr.birthday}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
                   <span className="text-slate-500">Password:</span>
                   <span className="text-emerald-400 font-bold">{usr.password || '••••••••'}</span>
                 </div>
@@ -173,9 +248,31 @@ export function UserManagement() {
               <div className="text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-800/80 pt-2">
                 <span>Access Limit:</span>
                 <span className="font-bold text-orange-300">
-                  {usr.role === 'SUPER_ADMIN' ? 'All 7 Choirs Combined' : assignedChoir?.name || 'Assigned Choir'}
+                  {usr.role === 'SUPER_ADMIN' ? 'All Choirs Combined' : assignedChoir?.name || 'Assigned Choir'}
                 </span>
               </div>
+
+              {/* Super Admin Approval Actions for Pending Users */}
+              {isPending && (
+                <div className="pt-2 border-t border-amber-500/30 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleApproveUser(usr)}
+                    className="flex-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 text-white py-1.5 rounded-xl font-bold text-xs shadow-md shadow-emerald-500/20 transition-all"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Approve</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDenyUser(usr)}
+                    className="px-3 flex items-center justify-center gap-1 bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-1.5 rounded-xl font-bold text-xs transition-all"
+                  >
+                    <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Deny</span>
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -227,6 +324,28 @@ export function UserManagement() {
                     placeholder="sarahadmin"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
+                    className="w-full bg-[#0f172a] border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Phone Number</label>
+                  <input
+                    type="tel"
+                    placeholder="+1 (555) 000-0000"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full bg-[#0f172a] border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Birthday (Optional)</label>
+                  <input
+                    type="date"
+                    value={birthday}
+                    onChange={(e) => setBirthday(e.target.value)}
                     className="w-full bg-[#0f172a] border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-orange-500"
                   />
                 </div>
