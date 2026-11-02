@@ -165,11 +165,21 @@ export interface AttendanceRecord {
 export type FollowUpPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 export type FollowUpStatus = 'NEW' | 'CONTACTED' | 'IN_PROGRESS' | 'WAITING' | 'COMPLETED' | 'ESCALATED';
 
+export type FollowUpCategory =
+  | 'ABSENTEEISM'
+  | 'ILLNESS'
+  | 'BEREAVEMENT'
+  | 'SPIRITUAL_SUPPORT'
+  | 'FAMILY_VISIT'
+  | 'MENTORSHIP'
+  | 'WELLNESS_CHECK'
+  | 'OTHER';
+
 export interface FollowUpNote {
   id: string;
   authorName: string;
   note: string;
-  contactMethod: 'Phone Call' | 'WhatsApp' | 'In-Person' | 'Email' | 'SMS';
+  contactMethod: 'Phone Call' | 'WhatsApp' | 'In-Person' | 'Email' | 'SMS' | 'Home/Hospital Visit';
   createdAt: string;
 }
 
@@ -180,6 +190,9 @@ export interface FollowUp {
   memberId: string;
   memberName: string;
   reason: string;
+  category?: FollowUpCategory;
+  phone?: string;
+  email?: string;
   assignedLeaderId?: string;
   assignedLeaderName?: string;
   priority: FollowUpPriority;

@@ -10,6 +10,7 @@ import {
   AttendanceSession,
   AttendanceRecord,
   FollowUp,
+  PrayerRequest,
   Event,
   Assignment,
   Song,
@@ -131,6 +132,17 @@ export const SupabaseDbService = {
       const { data, error } = await supabase.from('follow_ups').select('*').order('created_at', { ascending: false });
       if (error || !data) return null;
       return toCamelCase(data) as FollowUp[];
+    } catch {
+      return null;
+    }
+  },
+
+  async fetchPrayerRequests(): Promise<PrayerRequest[] | null> {
+    if (!isSupabaseConfigured()) return null;
+    try {
+      const { data, error } = await supabase.from('prayer_requests').select('*').order('created_at', { ascending: false });
+      if (error || !data) return null;
+      return toCamelCase(data) as PrayerRequest[];
     } catch {
       return null;
     }
@@ -292,6 +304,34 @@ export const SupabaseDbService = {
     }
   },
 
+  async deleteFollowUp(id: string) {
+    if (!isSupabaseConfigured()) return;
+    try {
+      await supabase.from('follow_ups').delete().eq('id', id);
+    } catch (e) {
+      console.warn('Supabase delete follow up error:', e);
+    }
+  },
+
+  async upsertPrayerRequest(prayer: PrayerRequest) {
+    if (!isSupabaseConfigured()) return;
+    try {
+      const payload = toSnakeCase(prayer);
+      await supabase.from('prayer_requests').upsert(payload, { onConflict: 'id' });
+    } catch (e) {
+      console.warn('Supabase upsert prayer request error:', e);
+    }
+  },
+
+  async deletePrayerRequest(id: string) {
+    if (!isSupabaseConfigured()) return;
+    try {
+      await supabase.from('prayer_requests').delete().eq('id', id);
+    } catch (e) {
+      console.warn('Supabase delete prayer request error:', e);
+    }
+  },
+
   async upsertEvent(event: Event) {
     if (!isSupabaseConfigured()) return;
     try {
@@ -371,6 +411,7 @@ export const SupabaseDbService = {
     attendanceSessions?: AttendanceSession[];
     attendanceRecords?: AttendanceRecord[];
     followUps?: FollowUp[];
+    prayerRequests?: PrayerRequest[];
     events?: Event[];
     assignments?: Assignment[];
     songs?: Song[];
@@ -403,6 +444,9 @@ export const SupabaseDbService = {
       }
       if (localData.followUps && localData.followUps.length > 0) {
         await supabase.from('follow_ups').upsert(toSnakeCase(localData.followUps), { onConflict: 'id' });
+      }
+      if (localData.prayerRequests && localData.prayerRequests.length > 0) {
+        await supabase.from('prayer_requests').upsert(toSnakeCase(localData.prayerRequests), { onConflict: 'id' });
       }
       if (localData.events && localData.events.length > 0) {
         await supabase.from('events').upsert(toSnakeCase(localData.events), { onConflict: 'id' });

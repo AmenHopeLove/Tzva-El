@@ -149,7 +149,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
         {/* Pastoral Care for Leaders OR Assigned Choir for Members */}
         {hasPermission('followup.view') ? (
-          <div className="bg-[#0b1120] border border-slate-800 rounded-xl p-4 text-slate-100 shadow-sm">
+          <div
+            onClick={() => onNavigate('followup')}
+            className="bg-[#0b1120] border border-slate-800 hover:border-rose-500/40 rounded-xl p-4 text-slate-100 shadow-sm cursor-pointer transition-all">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-slate-400">Pending Follow-ups</span>
               <div className="p-2 bg-rose-500/10 rounded-lg text-rose-400">

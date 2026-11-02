@@ -131,12 +131,31 @@ CREATE TABLE IF NOT EXISTS public.follow_ups (
     member_id TEXT,
     member_name TEXT,
     reason TEXT NOT NULL,
+    category TEXT,
+    phone TEXT,
+    email TEXT,
     assigned_leader_id TEXT,
     assigned_leader_name TEXT,
     priority TEXT DEFAULT 'MEDIUM',
     status TEXT DEFAULT 'NEW',
     next_follow_up_date TEXT,
     notes_history JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ----------------------------------------------------------------------------
+-- 6b. PRAYER REQUESTS & SPIRITUAL CARE
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.prayer_requests (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    member_id TEXT,
+    member_name TEXT,
+    choir_id TEXT,
+    title TEXT NOT NULL,
+    description TEXT,
+    privacy_level TEXT DEFAULT 'CHOIR_LEADERSHIP',
+    is_answered BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -292,6 +311,7 @@ ALTER TABLE public.members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.follow_ups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.prayer_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.songs ENABLE ROW LEVEL SECURITY;
@@ -321,6 +341,9 @@ CREATE POLICY "Public full access attendance_records" ON public.attendance_recor
 
 DROP POLICY IF EXISTS "Public full access follow_ups" ON public.follow_ups;
 CREATE POLICY "Public full access follow_ups" ON public.follow_ups FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public full access prayer_requests" ON public.prayer_requests;
+CREATE POLICY "Public full access prayer_requests" ON public.prayer_requests FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Public full access events" ON public.events;
 CREATE POLICY "Public full access events" ON public.events FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);

@@ -22,10 +22,11 @@ import {
   User,
   SystemRole,
   AppNotification,
-  VocalPart
+  VocalPart,
+  PrayerRequest
 } from '../types';
 
-import { INITIAL_ORGANIZATION, INITIAL_CHOIRS, INITIAL_CUSTOM_FIELDS, generateSeedMembers, INITIAL_SONGS, INITIAL_EVENTS, INITIAL_FOLLOW_UPS, INITIAL_AUDIT_LOGS, INITIAL_ANNOUNCEMENTS, INITIAL_USERS } from './seedData';
+import { INITIAL_ORGANIZATION, INITIAL_CHOIRS, INITIAL_CUSTOM_FIELDS, generateSeedMembers, INITIAL_SONGS, INITIAL_EVENTS, INITIAL_FOLLOW_UPS, INITIAL_PRAYER_REQUESTS, INITIAL_AUDIT_LOGS, INITIAL_ANNOUNCEMENTS, INITIAL_USERS } from './seedData';
 import { SupabaseDbService } from '../supabase/dbService';
 
 const STORAGE_KEYS = {
@@ -37,6 +38,7 @@ const STORAGE_KEYS = {
   ATTENDANCE_SESSIONS: 'worship_att_sessions_v2',
   ATTENDANCE_RECORDS: 'worship_att_records_v2',
   FOLLOW_UPS: 'worship_follow_ups_v2',
+  PRAYER_REQUESTS: 'worship_prayer_requests_v2',
   EVENTS: 'worship_events_v2',
   ASSIGNMENTS: 'worship_assignments_v2',
   SONGS: 'worship_songs_v2',
@@ -121,6 +123,7 @@ export const DataStore = {
         sbSessions,
         sbRecords,
         sbFollowUps,
+        sbPrayerRequests,
         sbEvents,
         sbAssignments,
         sbSongs,
@@ -134,6 +137,7 @@ export const DataStore = {
         SupabaseDbService.fetchAttendanceSessions(),
         SupabaseDbService.fetchAttendanceRecords(),
         SupabaseDbService.fetchFollowUps(),
+        SupabaseDbService.fetchPrayerRequests(),
         SupabaseDbService.fetchEvents(),
         SupabaseDbService.fetchAssignments(),
         SupabaseDbService.fetchSongs(),
@@ -208,6 +212,11 @@ export const DataStore = {
         localStorage.setItem(STORAGE_KEYS.FOLLOW_UPS, JSON.stringify(sbFollowUps));
       }
 
+      // 5b. RECONCILE PRAYER REQUESTS
+      if (sbPrayerRequests && sbPrayerRequests.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.PRAYER_REQUESTS, JSON.stringify(sbPrayerRequests));
+      }
+
       // 6. RECONCILE EVENTS
       if (sbEvents && sbEvents.length > 0) {
         localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(sbEvents));
@@ -255,6 +264,7 @@ export const DataStore = {
       attendanceSessions: this.getAttendanceSessions(),
       attendanceRecords: getItem(STORAGE_KEYS.ATTENDANCE_RECORDS, []),
       followUps: this.getFollowUps(),
+      prayerRequests: this.getPrayerRequests(),
       events: this.getEvents(),
       assignments: this.getAssignments(),
       songs: this.getSongs(),
@@ -748,46 +758,153 @@ export const DataStore = {
 
   // --- PASTORAL CARE & FOLLOW-UPS ---
   getFollowUps(choirIdFilter?: string): FollowUp[] {
-    const followUps = getItem(STORAGE_KEYS.FOLLOW_UPS, INITIAL_FOLLOW_UPS);
+    let followUps = getItem<FollowUp[]>(STORAGE_KEYS.FOLLOW_UPS, INITIAL_FOLLOW_UPS);
+    if (!followUps || followUps.length === 0) {
+      followUps = INITIAL_FOLLOW_UPS;
+      setItem(STORAGE_KEYS.FOLLOW_UPS, followUps);
+    }
     if (choirIdFilter && choirIdFilter !== 'ALL') {
       return followUps.filter((f) => f.choirId === choirIdFilter);
     }
     return followUps;
   },
-  createFollowUp(data: Partial<FollowUp> & { choirId: string; memberId: string; memberName: string; reason: string }): FollowUp {
+  getFollowUpById(id: string): FollowUp | undefined {
+    return this.getFollowUps().find((f) => f.id === id);
+  },
+  createFollowUp(
+    data: Partial<FollowUp> & { choirId: string; memberId: string; memberName: string; reason: string },
+    userContext = 'Leader'
+  ): FollowUp {
     const followUps = this.getFollowUps();
     const choir = this.getChoirById(data.choirId);
+    const member = this.getMemberById(data.memberId);
     const newFollowUp: FollowUp = {
       id: `fol-${Date.now()}`,
-      priority: 'MEDIUM',
-      status: 'NEW',
-      notesHistory: [],
+      priority: data.priority || 'MEDIUM',
+      status: data.status || 'NEW',
+      notesHistory: data.notesHistory || [],
       createdAt: new Date().toISOString().split('T')[0],
-      choirName: choir?.name,
+      choirName: choir?.name || 'Sanctuary Worship Choir',
+      phone: data.phone || member?.phone || '',
+      email: data.email || member?.email || '',
+      category: data.category || 'WELLNESS_CHECK',
       ...data
     };
     followUps.unshift(newFollowUp);
     setItem(STORAGE_KEYS.FOLLOW_UPS, followUps);
-    // Persist to Supabase
     SupabaseDbService.upsertFollowUp(newFollowUp);
+    this.addAuditLog(userContext, 'LEADER', 'CREATE_PASTORAL_CARE', 'FollowUp', newFollowUp.id, `Created pastoral care record for '${newFollowUp.memberName}'`);
     return newFollowUp;
   },
-  addFollowUpNote(followUpId: string, note: string, authorName: string, contactMethod: any) {
+  updateFollowUp(followUp: FollowUp, userContext = 'Leader'): FollowUp {
+    const followUps = this.getFollowUps();
+    const idx = followUps.findIndex((f) => f.id === followUp.id);
+    if (idx >= 0) {
+      followUps[idx] = { ...followUps[idx], ...followUp };
+      setItem(STORAGE_KEYS.FOLLOW_UPS, followUps);
+      SupabaseDbService.upsertFollowUp(followUps[idx]);
+      this.addAuditLog(userContext, 'LEADER', 'UPDATE_PASTORAL_CARE', 'FollowUp', followUp.id, `Updated pastoral care for '${followUp.memberName}' (${followUp.status})`);
+      return followUps[idx];
+    }
+    return followUp;
+  },
+  deleteFollowUp(id: string, userContext = 'Leader'): void {
+    const followUps = this.getFollowUps().filter((f) => f.id !== id);
+    setItem(STORAGE_KEYS.FOLLOW_UPS, followUps);
+    SupabaseDbService.deleteFollowUp(id);
+    this.addAuditLog(userContext, 'LEADER', 'DELETE_PASTORAL_CARE', 'FollowUp', id, `Deleted pastoral ticket ID ${id}`);
+  },
+  addFollowUpNote(
+    followUpId: string,
+    note: string,
+    authorName: string,
+    contactMethod: any,
+    nextFollowUpDate?: string
+  ) {
     const followUps = this.getFollowUps();
     const idx = followUps.findIndex((f) => f.id === followUpId);
     if (idx >= 0) {
-      followUps[idx].notesHistory.push({
+      const newNote = {
         id: `fn-${Date.now()}`,
         authorName,
         note,
         contactMethod,
-        createdAt: new Date().toLocaleString()
-      });
-      followUps[idx].status = 'CONTACTED';
+        createdAt: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      followUps[idx].notesHistory = [newNote, ...(followUps[idx].notesHistory || [])];
+      if (followUps[idx].status === 'NEW') {
+        followUps[idx].status = 'CONTACTED';
+      }
+      if (nextFollowUpDate) {
+        followUps[idx].nextFollowUpDate = nextFollowUpDate;
+      }
       setItem(STORAGE_KEYS.FOLLOW_UPS, followUps);
-      // Persist to Supabase
       SupabaseDbService.upsertFollowUp(followUps[idx]);
     }
+  },
+  resetSampleFollowUps(): FollowUp[] {
+    setItem(STORAGE_KEYS.FOLLOW_UPS, INITIAL_FOLLOW_UPS);
+    INITIAL_FOLLOW_UPS.forEach((f) => SupabaseDbService.upsertFollowUp(f));
+    return INITIAL_FOLLOW_UPS;
+  },
+  getAtRiskMembers(choirIdFilter?: string): Member[] {
+    const members = this.getMembers(choirIdFilter);
+    return members.filter((m) => m.consecutiveAbsences >= 2);
+  },
+
+  // --- PRAYER REQUESTS & SPIRITUAL CARE ---
+  getPrayerRequests(choirIdFilter?: string): PrayerRequest[] {
+    let prayers = getItem<PrayerRequest[]>(STORAGE_KEYS.PRAYER_REQUESTS, INITIAL_PRAYER_REQUESTS);
+    if (!prayers || prayers.length === 0) {
+      prayers = INITIAL_PRAYER_REQUESTS;
+      setItem(STORAGE_KEYS.PRAYER_REQUESTS, prayers);
+    }
+    if (choirIdFilter && choirIdFilter !== 'ALL') {
+      return prayers.filter((p) => p.choirId === choirIdFilter);
+    }
+    return prayers;
+  },
+  savePrayerRequest(
+    data: Partial<PrayerRequest> & { choirId: string; memberId: string; memberName: string; title: string; description: string },
+    userContext = 'Leader'
+  ): PrayerRequest {
+    const prayers = this.getPrayerRequests();
+    let updated: PrayerRequest;
+    if (data.id) {
+      const idx = prayers.findIndex((p) => p.id === data.id);
+      updated = { ...prayers[idx], ...data };
+      prayers[idx] = updated;
+      this.addAuditLog(userContext, 'LEADER', 'UPDATE_PRAYER', 'PrayerRequest', updated.id, `Updated prayer request for '${updated.memberName}'`);
+    } else {
+      updated = {
+        id: `pray-${Date.now()}`,
+        privacyLevel: 'CHOIR_LEADERSHIP',
+        isAnswered: false,
+        createdAt: new Date().toISOString().split('T')[0],
+        ...data
+      };
+      prayers.unshift(updated);
+      this.addAuditLog(userContext, 'LEADER', 'CREATE_PRAYER', 'PrayerRequest', updated.id, `Created prayer request for '${updated.memberName}'`);
+    }
+    setItem(STORAGE_KEYS.PRAYER_REQUESTS, prayers);
+    SupabaseDbService.upsertPrayerRequest(updated);
+    return updated;
+  },
+  togglePrayerAnswered(id: string, isAnswered: boolean, userContext = 'Leader'): void {
+    const prayers = this.getPrayerRequests();
+    const idx = prayers.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      prayers[idx].isAnswered = isAnswered;
+      setItem(STORAGE_KEYS.PRAYER_REQUESTS, prayers);
+      SupabaseDbService.upsertPrayerRequest(prayers[idx]);
+      this.addAuditLog(userContext, 'LEADER', 'ANSWER_PRAYER', 'PrayerRequest', id, `Marked prayer request as ${isAnswered ? 'Answered' : 'Active'}`);
+    }
+  },
+  deletePrayerRequest(id: string, userContext = 'Leader'): void {
+    const prayers = this.getPrayerRequests().filter((p) => p.id !== id);
+    setItem(STORAGE_KEYS.PRAYER_REQUESTS, prayers);
+    SupabaseDbService.deletePrayerRequest(id);
+    this.addAuditLog(userContext, 'LEADER', 'DELETE_PRAYER', 'PrayerRequest', id, `Deleted prayer request ID ${id}`);
   },
 
   // --- EVENTS & WORSHIP NIGHTS ---
