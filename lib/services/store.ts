@@ -95,6 +95,40 @@ export const DataStore = {
       setItem(STORAGE_KEYS.LEAVE_REQUESTS, []);
       setItem(STORAGE_KEYS.NOTIFICATIONS, []);
     }
+
+    // Explicit local storage migration & sanitization for pending members
+    if (typeof window !== 'undefined') {
+      try {
+        const mems = getItem<Member[]>(STORAGE_KEYS.MEMBERS, []);
+        const usrs = getItem<User[]>(STORAGE_KEYS.USERS, []);
+        let memsUpdated = false;
+
+        mems.forEach((m) => {
+          const matchingUser = usrs.find(
+            (u) =>
+              (m.userId && u.id === m.userId) ||
+              (m.email && u.email && m.email.toLowerCase() === u.email.toLowerCase()) ||
+              (m.phone && u.phone && m.phone.replace(/\D/g, '') === u.phone.replace(/\D/g, '')) ||
+              (m.fullName && u.fullName && m.fullName.toLowerCase() === u.fullName.toLowerCase())
+          );
+          if (matchingUser) {
+            if (matchingUser.status === 'PENDING_APPROVAL' || matchingUser.isActive === false) {
+              if (m.status !== 'PENDING_APPROVAL') {
+                m.status = 'PENDING_APPROVAL';
+                memsUpdated = true;
+              }
+            }
+          }
+        });
+
+        if (memsUpdated) {
+          localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(mems));
+        }
+      } catch (err) {
+        console.warn('Init store cleanup note:', err);
+      }
+    }
+
     this.syncUsersAndMembers();
     // Trigger background pull from Supabase to refresh local cache with cloud data
     this.syncFromSupabase();
@@ -560,19 +594,43 @@ export const DataStore = {
 
     // Auto-provision choir member record with PENDING_APPROVAL status
     try {
-      const members = this.getMembers();
-      if (!members.some((m) => m.email.toLowerCase() === trimmedEmail)) {
-        this.saveMember({
-          fullName: newUser.fullName,
-          email: newUser.email,
-          phone: newUser.phone,
-          birthday: newUser.birthday,
-          primaryChoirId: assignedChoir,
-          role: 'Member' as any,
-          vocalPart: data.vocalPart || 'Soprano',
-          status: 'PENDING_APPROVAL'
-        }, 'Registration');
+      const members = getItem<Member[]>(STORAGE_KEYS.MEMBERS, []);
+      const choirs = this.getChoirs();
+      const choir = choirs.find((c) => c.id === assignedChoir);
+      const existingIdx = members.findIndex(
+        (m) =>
+          (m.email && m.email.toLowerCase() === trimmedEmail) ||
+          (m.userId && m.userId === newUser.id) ||
+          m.fullName.toLowerCase() === newUser.fullName.toLowerCase()
+      );
+
+      const memberRecord: Member = {
+        id: existingIdx !== -1 ? members[existingIdx].id : `mem-${newUser.id.replace('usr-', '')}`,
+        organizationId: 'org-001',
+        userId: newUser.id,
+        fullName: newUser.fullName,
+        email: newUser.email,
+        phone: newUser.phone,
+        birthday: newUser.birthday,
+        gender: 'Male',
+        dateJoined: new Date().toISOString().split('T')[0],
+        departments: ['Vocal'],
+        vocalPart: data.vocalPart || 'Soprano',
+        skillLevel: 'Intermediate',
+        status: 'PENDING_APPROVAL',
+        consecutiveAbsences: 0,
+        createdAt: new Date().toISOString().split('T')[0],
+        primaryChoirId: assignedChoir,
+        choirName: choir?.name || 'Sanctuary Worship Choir'
+      };
+
+      if (existingIdx !== -1) {
+        members[existingIdx] = memberRecord;
+      } else {
+        members.push(memberRecord);
       }
+      setItem(STORAGE_KEYS.MEMBERS, members);
+      SupabaseDbService.upsertMember(memberRecord);
     } catch (e) {
       console.warn('Auto member provisioning note:', e);
     }
