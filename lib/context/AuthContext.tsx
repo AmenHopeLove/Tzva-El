@@ -340,9 +340,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const handleSetActiveChoirId = (id: string) => {
+    // Super admins and overall worship ministry leaders can view any choir or ALL
+    if (currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'WORSHIP_MINISTRY_LEADER') {
+      setActiveChoirId(id);
+      return;
+    }
     // Non-admins cannot access the combined multi-choir view
-    if (id === 'ALL' && currentUser?.role !== 'SUPER_ADMIN' && currentUser?.role !== 'WORSHIP_MINISTRY_LEADER') {
+    if (id === 'ALL') {
       console.warn('Access denied: Cannot view ALL choirs');
+      return;
+    }
+    // Choir Leaders and members are strictly restricted to their assigned choir(s)
+    const allowedChoirIds = currentUser?.assignedChoirIds || (currentUser?.primaryChoirId ? [currentUser.primaryChoirId] : []);
+    if (!allowedChoirIds.includes(id) && id !== currentUser?.primaryChoirId) {
+      console.warn(`Access denied: User is not authorized to manage or view choir ${id}`);
       return;
     }
     setActiveChoirId(id);

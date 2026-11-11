@@ -98,7 +98,11 @@ export const SupabaseDbService = {
     try {
       const { data, error } = await supabase.from('users').select('*');
       if (error || !data) return null;
-      return toCamelCase(data) as User[];
+      const users = toCamelCase(data) as User[];
+      return users.map((u: any) => ({
+        ...u,
+        status: u.status || (u.isActive === false ? 'PENDING_APPROVAL' : 'ACTIVE')
+      }));
     } catch {
       return null;
     }
@@ -267,7 +271,22 @@ export const SupabaseDbService = {
   async upsertUser(user: User) {
     if (!isSupabaseConfigured()) return;
     try {
-      const payload = toSnakeCase(user);
+      const isActive = user.status === 'ACTIVE' || (!user.status && user.isActive !== false);
+      const payload: Record<string, any> = {
+        id: user.id,
+        email: user.email,
+        full_name: user.fullName,
+        is_active: isActive
+      };
+      if (user.organizationId) payload.organization_id = user.organizationId;
+      if (user.username) payload.username = user.username;
+      if (user.password) payload.password = user.password;
+      if (user.avatarUrl) payload.avatar_url = user.avatarUrl;
+      if (user.phone) payload.phone = user.phone;
+      if (user.role) payload.role = user.role;
+      if (user.assignedChoirIds) payload.assigned_choir_ids = user.assignedChoirIds;
+      if (user.primaryChoirId) payload.primary_choir_id = user.primaryChoirId;
+
       await supabase.from('users').upsert(payload, { onConflict: 'id' });
     } catch (e) {
       console.warn('Supabase upsert user error:', e);

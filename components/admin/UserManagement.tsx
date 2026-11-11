@@ -18,7 +18,8 @@ import {
   XCircle,
   Clock,
   Phone,
-  Calendar
+  Calendar,
+  Edit3
 } from 'lucide-react';
 
 export function UserManagement() {
@@ -36,6 +37,52 @@ export function UserManagement() {
   const [role, setRole] = useState<SystemRole>('CHOIR_ADMIN');
   const [assignedChoirId, setAssignedChoirId] = useState('choir-1');
   const [showModal, setShowModal] = useState(false);
+
+  // Edit User State
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editFullName, setEditFullName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editBirthday, setEditBirthday] = useState('');
+  const [editRole, setEditRole] = useState<SystemRole>('CHOIR_LEADER');
+  const [editChoirId, setEditChoirId] = useState('choir-1');
+  const [editStatus, setEditStatus] = useState<'ACTIVE' | 'PENDING_APPROVAL' | 'DENIED' | 'INACTIVE'>('ACTIVE');
+
+  const openEditModal = (u: User) => {
+    setEditingUser(u);
+    setEditFullName(u.fullName);
+    setEditEmail(u.email);
+    setEditUsername(u.username || '');
+    setEditPhone(u.phone || '');
+    setEditBirthday(u.birthday || '');
+    setEditRole(u.role);
+    setEditChoirId(u.primaryChoirId || u.assignedChoirIds?.[0] || allChoirs[0]?.id || 'choir-1');
+    setEditStatus(u.status || 'ACTIVE');
+  };
+
+  const handleSaveEditUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    DataStore.adminUpdateUser(
+      editingUser.id,
+      {
+        fullName: editFullName.trim(),
+        email: editEmail.trim(),
+        username: editUsername.trim() || editEmail.split('@')[0],
+        phone: editPhone.trim(),
+        birthday: editBirthday.trim(),
+        role: editRole,
+        primaryChoirId: editChoirId,
+        assignedChoirIds: [editChoirId],
+        status: editStatus
+      },
+      currentUser?.fullName || 'Super Admin'
+    );
+    setEditingUser(null);
+    refreshUserList();
+    alert(`Updated account for '${editFullName}'! Role: ${editRole}.`);
+  };
 
   const refreshUserList = () => {
     setUsers(DataStore.getUsers());
@@ -252,6 +299,18 @@ export function UserManagement() {
                 </span>
               </div>
 
+              {/* Edit Role & Assigned Choir Button */}
+              <div className="pt-2 border-t border-slate-800/80 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => openEditModal(usr)}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-[#0f172a] hover:bg-slate-800 text-slate-200 hover:text-white py-1.5 px-3 rounded-lg font-bold text-xs border border-slate-700 hover:border-orange-500/50 transition-all cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-orange-400" />
+                  <span>Assign Choir & Role</span>
+                </button>
+              </div>
+
               {/* Super Admin Approval Actions for Pending Users */}
               {isPending && (
                 <div className="pt-2 border-t border-amber-500/30 flex items-center gap-2">
@@ -407,6 +466,153 @@ export function UserManagement() {
                   className="px-5 py-2 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 text-white rounded-full font-extrabold shadow-md"
                 >
                   Create Account Credentials
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Role & Choir Assignment Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0b1120] border border-orange-500/40 rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl animate-in fade-in">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-orange-400" />
+                  Assign Choir & Role Access
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Configure choir leadership, assigned choir, and authorization for {editingUser.fullName}
+                </p>
+              </div>
+              <button
+                onClick={() => setEditingUser(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditUser} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={editFullName}
+                    onChange={(e) => setEditFullName(e.target.value)}
+                    className="w-full bg-[#0f172a] border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    className="w-full bg-[#0f172a] border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Username / Sign-In Handle</label>
+                  <input
+                    type="text"
+                    value={editUsername}
+                    onChange={(e) => setEditUsername(e.target.value)}
+                    className="w-full bg-[#0f172a] border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-orange-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Phone Number</label>
+                  <input
+                    type="tel"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    className="w-full bg-[#0f172a] border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-orange-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Assign System Role</label>
+                  <select
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value as SystemRole)}
+                    className="w-full bg-[#0f172a] border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-orange-500"
+                  >
+                    <option value="CHOIR_LEADER">Choir Leader (Strict access to assigned choir only)</option>
+                    <option value="CHOIR_ADMIN">Choir Admin</option>
+                    <option value="TEAM_LEADER">Team Leader</option>
+                    <option value="MEMBER">Member</option>
+                    <option value="VIEWER">Viewer</option>
+                    <option value="WORSHIP_MINISTRY_LEADER">Worship Ministry Leader</option>
+                    <option value="SUPER_ADMIN">Super Admin (All Choirs)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Assign Choir</label>
+                  <select
+                    value={editChoirId}
+                    onChange={(e) => setEditChoirId(e.target.value)}
+                    className="w-full bg-[#0f172a] border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-orange-500"
+                  >
+                    {allChoirs.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Birthday</label>
+                  <input
+                    type="date"
+                    value={editBirthday}
+                    onChange={(e) => setEditBirthday(e.target.value)}
+                    className="w-full bg-[#0f172a] border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Account Approval Status</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as any)}
+                    className="w-full bg-[#0f172a] border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-orange-500"
+                  >
+                    <option value="ACTIVE">Active (Approved)</option>
+                    <option value="PENDING_APPROVAL">Pending Choir Leader Approval</option>
+                    <option value="DENIED">Denied</option>
+                    <option value="INACTIVE">Inactive</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-full font-medium transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 text-white rounded-full font-extrabold shadow-md transition-all"
+                >
+                  Save Access Settings
                 </button>
               </div>
             </form>

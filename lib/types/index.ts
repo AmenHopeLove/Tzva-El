@@ -36,6 +36,7 @@ export type PermissionKey =
 
 export interface User {
   id: string;
+  organizationId?: string;
   email: string;
   username?: string;
   password?: string;
@@ -47,6 +48,7 @@ export interface User {
   role: SystemRole;
   assignedChoirIds: string[]; // Choirs user has access to
   primaryChoirId?: string;
+  isActive?: boolean;
 }
 
 export interface Organization {

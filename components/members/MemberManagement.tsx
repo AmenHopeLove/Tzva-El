@@ -133,18 +133,19 @@ export function MemberManagement() {
     if (!canViewAllChoirs && !allowedChoirIds.includes(m.primaryChoirId)) {
       return false;
     }
-    return m.status !== 'PENDING_APPROVAL' && m.status !== 'DENIED';
+    return m.status === 'ACTIVE' || (!m.status && m.status !== 'PENDING_APPROVAL' && m.status !== 'DENIED');
   });
 
   const displayedMembers = members.filter((m) => {
     if (!canViewAllChoirs && !allowedChoirIds.includes(m.primaryChoirId)) {
       return false;
     }
-    if (viewMode === 'PENDING' && m.status !== 'PENDING_APPROVAL') {
-      return false;
+    if (viewMode === 'PENDING') {
+      return m.status === 'PENDING_APPROVAL';
     }
-    if (viewMode === 'ACTIVE' && (m.status === 'PENDING_APPROVAL' || m.status === 'DENIED')) {
-      return false;
+    if (viewMode === 'ACTIVE') {
+      if (m.status === 'PENDING_APPROVAL' || m.status === 'DENIED') return false;
+      if (m.status && m.status !== 'ACTIVE') return false;
     }
 
     const matchSearch =
@@ -246,7 +247,7 @@ export function MemberManagement() {
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <span>Pending Approvals</span>
+              <span>Pending Approvals ({pendingMembers.length})</span>
               {pendingMembers.length > 0 && (
                 <span className="bg-amber-400 text-slate-950 font-black px-2 py-0.5 rounded-full text-[10px] animate-pulse">
                   {pendingMembers.length}

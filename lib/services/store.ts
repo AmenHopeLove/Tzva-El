@@ -170,8 +170,6 @@ export const DataStore = {
         }
       });
       const reconciledMembers = Array.from(memberMap.values());
-      localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(reconciledMembers));
-      updated = true;
 
       // 2. RECONCILE USERS (Two-Way Merge & Cloud Backfill)
       const localUsers = getItem<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
@@ -193,7 +191,36 @@ export const DataStore = {
         }
       });
       const reconciledUsers = Array.from(userMap.values());
+
+      // 2b. Harmonize pending approval statuses between users and members
+      reconciledUsers.forEach((u) => {
+        if (u.role === 'SUPER_ADMIN') return;
+        const matchingMember = reconciledMembers.find(
+          (m) =>
+            (m.userId && m.userId === u.id) ||
+            (m.email && u.email && m.email.toLowerCase() === u.email.toLowerCase()) ||
+            (m.phone && u.phone && m.phone.replace(/\D/g, '') === u.phone.replace(/\D/g, ''))
+        );
+        if (matchingMember) {
+          if (u.status === 'PENDING_APPROVAL' || matchingMember.status === 'PENDING_APPROVAL') {
+            u.status = 'PENDING_APPROVAL';
+            u.isActive = false;
+            matchingMember.status = 'PENDING_APPROVAL';
+          } else if (u.status === 'DENIED' || matchingMember.status === 'DENIED') {
+            u.status = 'DENIED';
+            u.isActive = false;
+            matchingMember.status = 'DENIED';
+          } else if (u.status === 'ACTIVE' || matchingMember.status === 'ACTIVE') {
+            u.status = 'ACTIVE';
+            u.isActive = true;
+            matchingMember.status = 'ACTIVE';
+          }
+        }
+      });
+
+      localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(reconciledMembers));
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(reconciledUsers));
+      updated = true;
 
       // 3. RECONCILE CHOIRS
       if (sbChoirs && sbChoirs.length > 0) {
@@ -282,19 +309,29 @@ export const DataStore = {
       const users = getItem<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
       const members = getItem<Member[]>(STORAGE_KEYS.MEMBERS, []);
       const choirs = this.getChoirs();
-      let changed = false;
+      let membersChanged = false;
+      let usersChanged = false;
 
       users.forEach((usr) => {
         // Skip super admin from choir member directory
         if (usr.role === 'SUPER_ADMIN' || usr.email.toLowerCase() === 'admin@church.org') {
           return;
         }
-        const exists = members.some(
-          (m) => (m.email && m.email.toLowerCase() === usr.email.toLowerCase()) || m.fullName.toLowerCase() === usr.fullName.toLowerCase()
+
+        const memberIndex = members.findIndex(
+          (m) =>
+            (m.userId && m.userId === usr.id) ||
+            (m.email && usr.email && m.email.toLowerCase() === usr.email.toLowerCase()) ||
+            (m.phone && usr.phone && m.phone.replace(/\D/g, '') === usr.phone.replace(/\D/g, '')) ||
+            m.fullName.toLowerCase() === usr.fullName.toLowerCase()
         );
-        if (!exists) {
-          const assignedChoirId = usr.primaryChoirId || usr.assignedChoirIds?.[0] || 'choir-1';
-          const choir = choirs.find((c) => c.id === assignedChoirId);
+
+        const assignedChoirId = usr.primaryChoirId || usr.assignedChoirIds?.[0] || 'choir-1';
+        const choir = choirs.find((c) => c.id === assignedChoirId);
+        const expectedStatus: MemberStatus =
+          (usr.status as MemberStatus) || (usr.isActive === false ? 'PENDING_APPROVAL' : 'ACTIVE');
+
+        if (memberIndex === -1) {
           const newMember: Member = {
             id: `mem-${usr.id.replace('usr-', '')}`,
             organizationId: 'org-001',
@@ -302,26 +339,77 @@ export const DataStore = {
             fullName: usr.fullName,
             email: usr.email,
             phone: usr.phone || '',
+            birthday: usr.birthday || '',
             gender: 'Male',
             dateJoined: new Date().toISOString().split('T')[0],
             departments: ['Vocal'],
             vocalPart: 'Soprano',
             skillLevel: 'Intermediate',
-            status: 'ACTIVE',
+            status: expectedStatus,
             consecutiveAbsences: 0,
             createdAt: new Date().toISOString().split('T')[0],
             primaryChoirId: assignedChoirId,
             choirName: choir?.name || 'Sanctuary Worship Choir'
           };
           members.push(newMember);
-          changed = true;
-          // Persist to Supabase
+          membersChanged = true;
           SupabaseDbService.upsertMember(newMember);
+        } else {
+          const existing = members[memberIndex];
+          let updated = false;
+
+          if (existing.status !== expectedStatus) {
+            existing.status = expectedStatus;
+            updated = true;
+          }
+          if (!existing.userId) {
+            existing.userId = usr.id;
+            updated = true;
+          }
+          if (usr.phone && !existing.phone) {
+            existing.phone = usr.phone;
+            updated = true;
+          }
+          if (usr.birthday && !existing.birthday) {
+            existing.birthday = usr.birthday;
+            updated = true;
+          }
+          if (choir && existing.primaryChoirId !== assignedChoirId) {
+            existing.primaryChoirId = assignedChoirId;
+            existing.choirName = choir.name;
+            updated = true;
+          }
+          if (updated) {
+            members[memberIndex] = existing;
+            membersChanged = true;
+            SupabaseDbService.upsertMember(existing);
+          }
         }
       });
 
-      if (changed) {
+      // Reverse check: If a member is PENDING_APPROVAL, ensure user account is not active
+      members.forEach((m) => {
+        if (m.status === 'PENDING_APPROVAL') {
+          const userIdx = users.findIndex(
+            (u) =>
+              (m.userId && u.id === m.userId) ||
+              (m.email && u.email && m.email.toLowerCase() === u.email.toLowerCase()) ||
+              (m.phone && u.phone && m.phone.replace(/\D/g, '') === u.phone.replace(/\D/g, ''))
+          );
+          if (userIdx !== -1 && users[userIdx].status !== 'PENDING_APPROVAL') {
+            users[userIdx].status = 'PENDING_APPROVAL';
+            users[userIdx].isActive = false;
+            usersChanged = true;
+            SupabaseDbService.upsertUser(users[userIdx]);
+          }
+        }
+      });
+
+      if (membersChanged) {
         localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
+      }
+      if (usersChanged) {
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
       }
     } catch (e) {
       console.warn('Sync users and members note:', e);
@@ -527,10 +615,12 @@ export const DataStore = {
     const userIdx = users.findIndex(
       (u) =>
         (member.userId && u.id === member.userId) ||
-        (member.email && u.email.toLowerCase() === member.email.toLowerCase())
+        (member.email && u.email && member.email.toLowerCase() === u.email.toLowerCase()) ||
+        (member.phone && u.phone && member.phone.replace(/\D/g, '') === u.phone.replace(/\D/g, '')) ||
+        (member.fullName && u.fullName && member.fullName.toLowerCase() === u.fullName.toLowerCase())
     );
     if (userIdx !== -1) {
-      const updatedUser: User = { ...users[userIdx], status: 'ACTIVE' };
+      const updatedUser: User = { ...users[userIdx], status: 'ACTIVE', isActive: true };
       users[userIdx] = updatedUser;
       setItem(STORAGE_KEYS.USERS, users);
       SupabaseDbService.upsertUser(updatedUser);
@@ -575,10 +665,12 @@ export const DataStore = {
     const userIdx = users.findIndex(
       (u) =>
         (member.userId && u.id === member.userId) ||
-        (member.email && u.email.toLowerCase() === member.email.toLowerCase())
+        (member.email && u.email && member.email.toLowerCase() === u.email.toLowerCase()) ||
+        (member.phone && u.phone && member.phone.replace(/\D/g, '') === u.phone.replace(/\D/g, '')) ||
+        (member.fullName && u.fullName && member.fullName.toLowerCase() === u.fullName.toLowerCase())
     );
     if (userIdx !== -1) {
-      const updatedUser: User = { ...users[userIdx], status: 'DENIED' };
+      const updatedUser: User = { ...users[userIdx], status: 'DENIED', isActive: false };
       users[userIdx] = updatedUser;
       setItem(STORAGE_KEYS.USERS, users);
       SupabaseDbService.upsertUser(updatedUser);
@@ -653,6 +745,76 @@ export const DataStore = {
     // Persist to Supabase
     SupabaseDbService.upsertUser(updatedUser);
     this.addAuditLog(updatedUser.fullName, updatedUser.role, 'UPDATE_PROFILE', 'User', updatedUser.id, 'User updated their profile information');
+    return { success: true, user: updatedUser };
+  },
+
+  adminUpdateUser(
+    userId: string,
+    updates: Partial<User>,
+    adminContext = 'Super Admin'
+  ): { success: boolean; user?: User; error?: string } {
+    const users = this.getUsers();
+    const idx = users.findIndex((u) => u.id === userId);
+    if (idx === -1) {
+      return { success: false, error: 'User account not found.' };
+    }
+
+    const current = users[idx];
+    const newPrimaryChoir = updates.primaryChoirId || current.primaryChoirId || current.assignedChoirIds?.[0] || 'choir-1';
+    const newAssignedChoirs = updates.assignedChoirIds || [newPrimaryChoir];
+
+    const updatedUser: User = {
+      ...current,
+      ...updates,
+      primaryChoirId: newPrimaryChoir,
+      assignedChoirIds: newAssignedChoirs
+    };
+
+    if (updates.status) {
+      updatedUser.isActive = updates.status === 'ACTIVE';
+    }
+
+    users[idx] = updatedUser;
+    setItem(STORAGE_KEYS.USERS, users);
+    SupabaseDbService.upsertUser(updatedUser);
+
+    // Also synchronize corresponding member record
+    const members = this.getMembers();
+    const choir = this.getChoirById(newPrimaryChoir);
+    const memberIdx = members.findIndex(
+      (m) =>
+        (m.userId && m.userId === updatedUser.id) ||
+        (m.email && updatedUser.email && m.email.toLowerCase() === updatedUser.email.toLowerCase()) ||
+        (m.phone && updatedUser.phone && m.phone.replace(/\D/g, '') === updatedUser.phone.replace(/\D/g, '')) ||
+        (m.fullName && updatedUser.fullName && m.fullName.toLowerCase() === updatedUser.fullName.toLowerCase())
+    );
+
+    if (memberIdx !== -1) {
+      const currentMem = members[memberIdx];
+      const updatedMem: Member = {
+        ...currentMem,
+        fullName: updatedUser.fullName || currentMem.fullName,
+        email: updatedUser.email || currentMem.email,
+        phone: updatedUser.phone || currentMem.phone,
+        birthday: updatedUser.birthday || currentMem.birthday,
+        primaryChoirId: newPrimaryChoir,
+        choirName: choir?.name || currentMem.choirName,
+        status: (updatedUser.status as MemberStatus) || currentMem.status
+      };
+      members[memberIdx] = updatedMem;
+      setItem(STORAGE_KEYS.MEMBERS, members);
+      SupabaseDbService.upsertMember(updatedMem);
+    }
+
+    this.addAuditLog(
+      adminContext,
+      'SUPER_ADMIN',
+      'ADMIN_UPDATE_USER',
+      'User',
+      updatedUser.id,
+      `Updated user '${updatedUser.fullName}' (Role: ${updatedUser.role}, Choir: ${choir?.name || newPrimaryChoir}, Status: ${updatedUser.status || 'ACTIVE'})`
+    );
+
     return { success: true, user: updatedUser };
   },
 

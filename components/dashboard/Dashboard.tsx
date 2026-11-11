@@ -12,7 +12,11 @@ import {
   UserPlus,
   ArrowUpRight,
   ShieldAlert,
-  Clock
+  Clock,
+  XCircle,
+  Phone,
+  Mail,
+  Shield
 } from 'lucide-react';
 import { NavTab } from '../layout/Navigation';
 
@@ -46,6 +50,27 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const flaggedAbsences = members.filter((m) => m.consecutiveAbsences >= 3 && m.status === 'ACTIVE');
 
   const events = DataStore.getEvents();
+
+  const isLeader =
+    currentUser?.role === 'SUPER_ADMIN' ||
+    currentUser?.role === 'CHOIR_LEADER' ||
+    currentUser?.role === 'CHOIR_ADMIN' ||
+    currentUser?.role === 'WORSHIP_MINISTRY_LEADER';
+
+  const handleApproveRegistration = (memberId: string, memberName: string) => {
+    const res = DataStore.approveMemberRequest(memberId, currentUser?.fullName || 'Choir Leader');
+    if (res.success) {
+      alert(`Approved access for ${memberName}! Their account has been activated and they can now sign in.`);
+      setTick((t) => t + 1);
+    }
+  };
+
+  const handleDenyRegistration = (memberId: string, memberName: string) => {
+    if (confirm(`Are you sure you want to deny registration access for '${memberName}'?`)) {
+      DataStore.denyMemberRequest(memberId, 'Denied by Choir Leader', currentUser?.fullName || 'Choir Leader');
+      setTick((t) => t + 1);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -84,29 +109,115 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         </div>
       </div>
 
-      {/* Pending Membership Approvals Alert (Visible to leaders with members.view) */}
-      {hasPermission('members.view') && pendingRegistrations.length > 0 && (
-        <div className="bg-amber-950/60 border border-amber-500/40 rounded-xl p-4 text-amber-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-lg animate-in fade-in">
-          <div className="flex items-start md:items-center gap-3">
-            <div className="p-2 bg-amber-500/20 rounded-lg border border-amber-500/30 text-amber-400">
-              <Clock className="w-5 h-5 animate-pulse" />
+      {/* Pending Membership Approvals Queue for Choir Leaders & Admins */}
+      {isLeader && pendingRegistrations.length > 0 && (
+        <div className="bg-[#0b1120] border-2 border-amber-500/50 rounded-2xl p-5 shadow-2xl space-y-4 animate-in fade-in">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-amber-500/20 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-amber-500/20 rounded-xl border border-amber-500/40 text-amber-400">
+                <Clock className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-white flex items-center gap-2">
+                  <span>Choir Leader Approval Queue:</span>
+                  <span className="text-amber-400 font-black px-2.5 py-0.5 rounded-full bg-amber-500/20 text-xs border border-amber-500/30">
+                    {pendingRegistrations.length} Prospective Member{pendingRegistrations.length > 1 ? 's' : ''} Awaiting Approval
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  The following applicant{pendingRegistrations.length > 1 ? 's' : ''} registered and require your authorization to join <span className="text-orange-400 font-bold">{activeChoir?.name || 'this choir'}</span>.
+                </p>
+              </div>
             </div>
-            <div>
-              <h4 className="font-bold text-sm text-amber-100 flex items-center gap-2">
-                Membership Review: {pendingRegistrations.length} Prospective Member(s) Waiting for Choir Approval
-              </h4>
-              <p className="text-xs text-amber-300 mt-0.5">
-                Applicants: {pendingRegistrations.map((m) => m.fullName).slice(0, 3).join(', ')}
-                {pendingRegistrations.length > 3 ? ` and ${pendingRegistrations.length - 3} others` : ''}. Review and approve access.
-              </p>
-            </div>
+
+            <button
+              onClick={() => onNavigate('members')}
+              className="w-full md:w-auto text-xs text-amber-300 hover:text-white bg-amber-950/40 hover:bg-amber-900/60 border border-amber-500/40 font-bold px-3.5 py-1.5 rounded-full transition-all text-center shrink-0"
+            >
+              Open Full Directory →
+            </button>
           </div>
-          <button
-            onClick={() => onNavigate('members')}
-            className="w-full md:w-auto whitespace-nowrap bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 text-white text-xs font-bold px-4 py-2 md:py-1.5 rounded-full shadow-md transition-all text-center"
-          >
-            Review & Approve ({pendingRegistrations.length})
-          </button>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {pendingRegistrations.map((m) => (
+              <div
+                key={m.id}
+                className="bg-[#0f172a] border border-amber-500/30 hover:border-amber-400 rounded-xl p-4 flex flex-col justify-between space-y-3 transition-all shadow-md"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-amber-600 to-orange-500 text-white font-extrabold text-xs flex items-center justify-center border border-amber-400/40 shadow-sm">
+                        {m.fullName.charAt(0)}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm text-white">{m.fullName}</h4>
+                        <span className="text-[10px] text-amber-300 font-semibold">{m.choirName || activeChoir?.name || 'Worship Choir'}</span>
+                      </div>
+                    </div>
+                    <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                      {m.vocalPart || 'Vocal'}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 bg-[#0b1120] p-2.5 rounded-lg space-y-1 text-xs text-slate-300 font-mono">
+                    {m.phone && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Phone:</span>
+                        <div className="flex items-center gap-2">
+                          <a href={`tel:${m.phone}`} className="text-amber-300 hover:underline font-bold">
+                            {m.phone}
+                          </a>
+                          <a
+                            href={`https://wa.me/${m.phone.replace(/\D/g, '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] text-emerald-400 hover:underline"
+                          >
+                            WhatsApp
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                    {m.email && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Email:</span>
+                        <a href={`mailto:${m.email}`} className="text-slate-200 hover:underline truncate max-w-[150px]">
+                          {m.email}
+                        </a>
+                      </div>
+                    )}
+                    {m.birthday && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Birthday:</span>
+                        <span className="text-amber-200">{m.birthday}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-800 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleApproveRegistration(m.id, m.fullName)}
+                    className="flex-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs py-2 px-3 rounded-lg shadow-md shadow-emerald-900/30 transition-all cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Approve Access</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDenyRegistration(m.id, m.fullName)}
+                    className="flex items-center justify-center gap-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 hover:border-rose-400 font-bold text-xs py-2 px-3 rounded-lg transition-all cursor-pointer"
+                    title="Deny Access"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>Deny</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
